@@ -249,7 +249,7 @@ def _to_num(v, default=0.0):
 
 
 def collect_portfolio():
-    """통합 보유 종목: 키움(KRW) + 토스(항목). 각 행: symbol/name/qty/avg/cur/currency/broker."""
+    """통합 보유 종목: 키움(KRW) + 토스. 행: symbol/name/qty/avg/cur/currency/broker + 평가손익/수익률."""
     portfolio = []
 
     # 키움
@@ -259,16 +259,20 @@ def collect_portfolio():
             "symbol": it.get("stk_cd"), "name": it.get("stk_nm"),
             "qty": _to_num(it.get("rmnd_qty")), "avg_price": _to_num(it.get("pur_pric")),
             "cur_price": _to_num(it.get("cur_prc")), "currency": "KRW", "broker": "kiwoom",
+            "p_pnl": _to_num(it.get("evltv_prft")), "p_pnl_rate": _to_num(it.get("prft_rt")),
         })
 
     # 토스
     tb = toss_overseas_balance()
     for it in (tb.get("items") or []):
+        pl = it.get("profitLoss") or {}
         portfolio.append({
             "symbol": it.get("symbol"), "name": it.get("name"),
             "qty": _to_num(it.get("quantity")), "avg_price": _to_num(it.get("averagePurchasePrice")),
             "cur_price": _to_num(it.get("lastPrice")),
             "currency": (it.get("currency") or "USD"), "broker": "toss",
+            "p_pnl": _to_num(pl.get("amount")),
+            "p_pnl_rate": _to_num(pl.get("rate")),
         })
 
     return portfolio

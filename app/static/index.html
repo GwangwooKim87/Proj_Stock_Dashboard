@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stock Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root{ color-scheme: dark;}
   *{ box-sizing:border-box; }
@@ -29,11 +30,15 @@
   <div class="muted" id="meta">loading health...</div>
 
   <div class="sum" id="summary"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
+    <div class="card"><b>종목별 평가금액 비중</b><div id="donutItem" style="height:260px;"></div></div>
+    <div class="card"><b>원화 vs 외화 비중</b><div id="donutCcy" style="height:260px;"></div></div>
+  </div>
   <div class="cards" id="accts"></div>
   <div class="card" id="status">Loading...</div>
 
   <table class="pos" id="pos">
-    <thead><tr><th>브로커</th><th>종목</th><th>수량</th><th>현재가</th><th>평단가</th><th>통화</th></tr></thead>
+    <thead><tr><th>브로커</th><th>종목</th><th>수량</th><th>현재가</th><th>평단가</th><th>통화</th><th>평가손익</th><th>수익률</th></tr></thead>
     <tbody id="posbody"></tbody>
   </table>
 
@@ -59,10 +64,37 @@
         '<div class="card"><span class="muted">보유 종목</span><b>'+items.length+'</b></div>'+
         '<div class="card"><span class="muted">원화 평가</span><b>'+fmt(totalKrw,'원')+'</b></div>'+
         '<div class="card"><span class="muted">외화 평가</span><b>'+fmt(totalUsd,'$')+'</b></div>';
-      $('posbody').innerHTML=items.map(h=>
-        '<tr><td>'+h.broker+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
+
+      // 도넛 1: 종목별 평가금액 비중
+      if (window.echarts && $('donutItem')) {
+        const nameMap={};
+        const byName={};
+        items.forEach(h=>{ const k=(h.name||h.symbol); byName[k]=(byName[k]||0)+h.qty*h.cur_price; });
+        const itemDonut=echarts.init($('donutItem'));
+        const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
+        itemDonut.setOption({tooltip:{trigger:'item',formatter:'{b}: {c}'},legend:{textStyle:{color:'#9aa0aa'},type:'scroll',bottom:0},
+          series:[{type:'pie',radius:['45%','70%'],center:['50%','42%'],avoidLabelOverlap:true,
+            label:{color:'#e8e8e8',formatter:'{b}: {d}%'},data:itemSort.map(([n,v])=>({name:n,value:Math.round(v)}))}]});
+        window._d1=itemDonut;
+      }
+
+      // 도넛 2: 원화 vs 외화 비중
+      if (window.echarts && $('donutCcy')) {
+        const ccDonut=echarts.init($('donutCcy'));
+        ccDonut.setOption({tooltip:{trigger:'item',formatter:'{b}: {c}'},legend:{textStyle:{color:'#9aa0aa'},bottom:0},
+          series:[{type:'pie',radius:['45%','70%'],center:['50%','42%'],label:{color:'#e8e8e8',formatter:'{b}: {d}%'},
+            data:[{name:'원화 (KRW)',value:Math.round(totalKrw)},{name:'외화 (USD)',value:Math.round(totalUsd)}]}]});
+        window._d2=ccDonut;
+      }
+
+      $('posbody').innerHTML=items.map(h=>{
+        const pnlCls = h.p_pnl > 0 ? 'green' : (h.p_pnl < 0 ? 'red' : '');
+        const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
+        return '<tr><td>'+h.broker+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
         '<td class="num">'+fmt(h.qty)+'</td><td class="num">'+fmt(h.cur_price)+'</td>'+
-        '<td class="num">'+fmt(h.avg_price)+'</td><td>'+h.currency+'</td></tr>').join('');
+        '<td class="num">'+fmt(h.avg_price)+'</td><td>'+h.currency+'</td>'+
+        '<td class="num '+pnlCls+'">'+fmt(h.p_pnl)+'</td>'+
+        '<td class="num '+rateCls+'">'+(h.p_pnl_rate!=null?h.p_pnl_rate.toFixed(2)+'%':'-')+'</td></tr>';}).join('');
       $('status').innerHTML='<b>Status:</b> healthy · 종목 '+items.length+' · 저장 '+d.saved;
     }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
   </script>
