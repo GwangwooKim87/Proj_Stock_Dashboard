@@ -64,6 +64,27 @@ def _cached_token(key, getter):
     return token
 
 
+def _invalidate_token(key):
+    """401 등으로 토큰이 무효해졌을 때 캐시 제거."""
+    cache = _load_cache()
+    if key in cache:
+        del cache[key]
+        _save_cache(cache)
+
+
+def _toss_get(url, headers, timeout=10):
+    """토스 GET — 401이면 토큰 재발급 후 1회 재시도."""
+    r = requests.get(url, headers=headers, timeout=timeout)
+    if r.status_code == 401:
+        _invalidate_token("toss")
+        tok = toss_token()  # 재발급
+        if tok:
+            headers["Authorization"] = "Bearer " + tok
+            r = requests.get(url, headers=headers, timeout=timeout)
+    r.raise_for_status()
+    return r
+
+
 class Throttler:
     def __init__(self, rps=5.0):
         self._min = 1.0 / rps if rps > 0 else  0
@@ -182,8 +203,7 @@ def toss_overseas_balance():
         return {}
     url = TOSS_BASE_URL.rstrip("/") + "/api/v1/holdings"
     headers = {"Authorization": "Bearer " + tok, "X-Tossinvest-Account": seq}
-    r = requests.get(url, headers=headers, timeout=10)
-    r.raise_for_status()
+    r = _toss_get(url, headers)
     return r.json().get("result") or {}
 
 
@@ -200,8 +220,7 @@ def _toss_accounts_api():
         return [] 
     url = TOSS_BASE_URL.rstrip("/") + "/api/v1/accounts"
     headers = {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
-    r = requests.get(url, headers=headers, timeout=10)
-    r.raise_for_status()
+    r = _toss_get(url, headers)
     data = r.json()
     accs = data.get("result") or data.get("accounts") or data.get("data") or []
     if isinstance(accs, dict):
