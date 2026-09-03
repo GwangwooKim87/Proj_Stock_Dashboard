@@ -1,0 +1,27 @@
+# Secrets — 절대 커밋 금지
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Data / DB / 캐시
+data/
+*.db
+*.db-wal
+*.db-shm
+cache/
+
+# 로그
+*.log
+uvicorn.log
+
+# 임시/디버그
+dbg_*.py
+probe_*.py
+test_*.py
+*_test.py

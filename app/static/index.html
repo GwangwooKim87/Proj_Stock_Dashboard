@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Dashboard</title>
+<style>
+  :root{ color-scheme: dark;}
+  *{ box-sizing:border-box; }
+  body{ font-family: system-ui, sans-serif; background:#0f1115; color:#e8e8e8; margin:0; padding:16px; max-width:960px; margin:0 auto;}
+  h1{ font-size:20px; margin:8px 0 2px;}
+  .muted{ color:#9aa0aa; font-size:13px;}
+  .cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin:16px 0;}
+  .card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:14px; }
+  .card b{ font-size:15px; display:block; margin-bottom:4px;}
+  .sum{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:16px 0;}
+  .sum .card b{ font-size:20px; }
+  .pos{ width:100%; font-size:13px; border-collapse:collapse;}
+  .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f;}
+  .pos th{ color:#9aa0aa; font-weight:600;}
+  .pos .num{ text-align:right; font-variant-numeric:tabular-nums;}
+  .red{ color:#ff5c5c;} .green{ color:#4ade80;}
+  .tag{ display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#252a35; color:#9aa0aa; margin-left:6px;}
+  .st{margin:4px 0;}
+</style>
+</head>
+<body>
+  <h1>Stock Dashboard</h1>
+  <div class="muted" id="meta">loading health...</div>
+
+  <div class="sum" id="summary"></div>
+  <div class="cards" id="accts"></div>
+  <div class="card" id="status">Loading...</div>
+
+  <table class="pos" id="pos">
+    <thead><tr><th>브로커</th><th>종목</th><th>수량</th><th>현재가</th><th>평단가</th><th>통화</th></tr></thead>
+    <tbody id="posbody"></tbody>
+  </table>
+
+  <script>
+    const $=id=>document.getElementById(id);
+    const fmt=(n,cur='')=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); return cur? s+' '+cur : s; };
+
+    fetch('/health').then(r=>r.json()).then(d=>{$('meta').textContent='db: '+d.db}).catch(()=>{});
+
+    fetch('/api/accounts').then(r=>r.json()).then(d=>{
+      const el=$('accts');
+      el.innerHTML=(d.accounts||[]).map(a=>'<div class="card"><b>'+a.label+'</b><div class="st"><span class="muted">계좌번호: </span>'+a.account_no+'</div><div class="tag">통화 '+a.currency_base+' · '+a.broker+'</div></div>').join('') || '<div class="card muted">계좌 없음</div>';
+    }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
+
+    fetch('/api/portfolio').then(r=>r.json()).then(d=>{
+      const items=d.holdings||[];
+      let totalKrw=0, totalUsd=0;
+      items.forEach(h=>{
+        const mv=h.qty*h.cur_price;
+        if(h.currency==='USD') totalUsd+=mv; else totalKrw+=mv;
+      });
+      $('summary').innerHTML=
+        '<div class="card"><span class="muted">보유 종목</span><b>'+items.length+'</b></div>'+
+        '<div class="card"><span class="muted">원화 평가</span><b>'+fmt(totalKrw,'원')+'</b></div>'+
+        '<div class="card"><span class="muted">외화 평가</span><b>'+fmt(totalUsd,'$')+'</b></div>';
+      $('posbody').innerHTML=items.map(h=>
+        '<tr><td>'+h.broker+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
+        '<td class="num">'+fmt(h.qty)+'</td><td class="num">'+fmt(h.cur_price)+'</td>'+
+        '<td class="num">'+fmt(h.avg_price)+'</td><td>'+h.currency+'</td></tr>').join('');
+      $('status').innerHTML='<b>Status:</b> healthy · 종목 '+items.length+' · 저장 '+d.saved;
+    }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
+  </script>
+</body>
+</html>

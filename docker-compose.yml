@@ -1,0 +1,33 @@
+# 개인 주식 자산 통합 대시보드 — docker-compose
+# 저사양 NAS (RAM 4GB, 내부 사설 IP 전용) 제약 준수 구성
+# 핵심: DB / AI / nginx 를 별도 컨테이너로 두지 않고 단일 `app`에 통합해 RAM 최소화
+services:
+  app:
+    build: .
+    image: stock-dash:latest
+    container_name: stock-dash
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Seoul
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - /opt/data/.env
+    ports:
+      # 내부 사설 IP 전용 접속 (공인 포트 노출 없음)
+      - "8080:8080"
+    volumes:
+      - ./app:/app/app      # FastAPI 백엔드 코드 (개발 반영)
+      - ./data:/data        # SQLite 단일파일 + 마지막 확정 캐시 (NAS 영속 스토리지)
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries:  ​3
+      start_period:  ​30s
+
+# 주의:
+# - `./data/` 는 NAS 스토리지에 영속 보존(삭제 금지) — SQLite 백업은 volume 스냅샷 or sqlite3 .backup 권장
+# - 공인 IP 노출 없이 사설망 내부에서만 사용 (라우터 포트포워딩 하지 말 것)
+# - 사양 업그레이드 시에만 선택적으로 nginx/PostgreSQL 컨테이너 확장 고려 가능
