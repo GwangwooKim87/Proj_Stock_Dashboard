@@ -67,7 +67,10 @@
 ## ⏭ 다음 세션 (남은 작업)
 1. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — **미진행** (사용자 유예)
 2. (선택) **네이버 뉴스 수집 + 변동성 필터링** — **미진행** (사용자 미룸)
-3. **당일 변동 보강**: quotes의 prev_close_price/change_rate가 NULL — 브로커가 전일종가/등락률을 안 줌 → **전용 시세 API**(키움/토스 따로 외) 필요. 추이선은 일일 스냅샷 크론이 쌓이는 중(현재 1일치. 
+3. **당일 변동 보강**: ✅ 시세 조회 메서드 구현 (2026-09-04 세션) — `brokers.toss_prices()`/`toss_prev_close()`/`get_quote()` 추가.
+   - 토스 `/api/v1/prices` (다건 현재가, 국내 KRX+해외 US 통합), `/api/v1/candles` (1d, 전일종가 closePrice). 키움 ka10001 REST 시세는 이 배포에서 미노출(500) → 국내도 토스로 조회.
+   - 검증: get_quote(005380,006800,QLD, with_prev_close=True) → 현재가+전일종가+통화 정상 (예: 현대차 384500/379500 KRW, QLD 91.22/90.38 USD). 토스 심볼 없으면 건너뜀(A0008S0).
+   - **남음**: quotes 테이블 prev_close/change_rate 채움 + 대시보드 당일변동 표시는 아직 (다음 단계). 
 
 ## 참고
 - 로컬 develop 브랜치는 원격에서 복원함(PR 병합 --delete-branch로 사라짐. `git checkout -b develop origin/develop`.)
