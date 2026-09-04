@@ -135,23 +135,29 @@
         '<div class="card"><span class="muted">원화 평가</span><b>'+fmt(totalKrw,'원')+'</b></div>'+
         '<div class="card"><span class="muted">외화 평가</span><b>'+fmt(totalUsd,'$')+'</b></div>';
 
-      // 도넛 1: 종목별 평가금액 비중 (라벨 내부· 잘림 방지)
-      if (window.echarts && $('donutItem')) {
-        const byName={};
-        items.forEach(h=>{ const k=(h.name||h.symbol); byName[k]=(byName[k]||0)+h.qty*h.cur_price; });
-        const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
-        const itemDonut=echarts.init($('donutItem'));
-        itemDonut.setOption({tooltip:{trigger:'item',formatter:'{b}: {c}'},
-          series:[{type:'pie',radius:['40%','72%'],center:['50%','48%'],
-            label:{color:'#e8e8e8',formatter:'{b}\n{d}%',minMargin:4},labelLine:{show:false},
-            data:itemSort.map(([n,v])=>({name:n,value:Math.round(v)}))}]});
-        window._d1=itemDonut;
-      }
+      // FX: USD→KRW 환율 (실시간 FX 모듈로 대체 예정)
+            const FX = 1350;
 
-      // 도넛 2: 원화 vs 외화 비중 (USD→KRW 환산 후 비중)
-      if (window.echarts && $('donutCcy')) {
-        const FX = 1350; // USD→KRW 환율 (실시간 FX 모듈로 대체 예정)
-        const krwVal = Math.round(totalKrw);
+            // 도넛 1: 종목별 평가금액 비중 (USD 종목은 FX 환산 후 비중)
+            if (window.echarts && $('donutItem')) {
+              const byName={};
+              items.forEach(h=>{
+                const k=(h.name||h.symbol);
+                const valKrw =(h.currency==='USD') ? h.qty*h.cur_price*FX : h.qty*h.cur_price;
+                byName[k]=(byName[k]||0)+valKrw;
+              });
+              const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
+              const itemDonut=echarts.init($('donutItem'));
+              itemDonut.setOption({tooltip:{trigger:'item',formatter:'{b}: {c}원'},
+                series:[{type:'pie',radius:['40%','72%'],center:['50%','48%'],
+                  label:{color:'#e8e8e8',formatter:'{b}\n{d}%',minMargin:4},labelLine:{show:false},
+                  data:itemSort.map(([n,v])=>({name:n,value:Math.round(v)}))}]});
+              window._d1=itemDonut;
+            }
+
+            // 도넛 2: 원화 vs 외화 비중 (USD→KRW 환산 후 비중)
+            if (window.echarts && $('donutCcy')) {
+              const krwVal = Math.round(totalKrw);
         const usdKrw = Math.round(totalUsd * FX);
         const ccDonut = echarts.init($('donutCcy'));
         ccDonut.setOption({tooltip:{trigger:'item',formatter:'{b}: {c}원'},
