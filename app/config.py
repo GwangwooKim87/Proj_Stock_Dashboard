@@ -13,6 +13,7 @@ class Settings:
         self.TOSSINVEST_CLIENT_SECRET = e.get("TOSSINVEST_CLIENT_SECRET", "").strip()
         self.TOSSINVEST_SCOPE = e.get("TOSSINVEST_SCOPE", "").strip()
         self.FX_BASE_URL = e.get("FX_BASE_URL", "").strip()
+        self.EXCHANGE_RATE_API_URL = e.get("EXCHANGE_RATE_API_URL", "").strip()
         self.DASHBOARD_PORT = int(e.get("DASHBOARD_PORT", "8080"))
         self.DB_PATH = "/data/dashboard.db"
 

@@ -11,7 +11,10 @@
 
 - `db._migrate_tables()`: 기존 구스키마 감지 시 DROP 후 재생성(멱등. 컨테이너에 db.py 누락 시 500(`no such column: current_price) → db.py 포함해 docker cp 필수.
 
-- `app/snapshots.py`: collect_portfolio → KRW 환산(USD→KRW, fx_rates>env>기본1350) 총액/손익 → day_snapshots UPSERT + quotes UPSERT.
+- `app/snapshots.py`: collect_portfolio → KRW 환산(USD→KRW — `app/fx.py` 실시간 모듈: 캐시→DB→기본값 폴백) 총액/손익 → day_snapshots UPSERT + quotes UPSERT.
+
+- 전역 하드코딩 `1350` 제거: snapshots.py `get_fx_rate()` → fx 모듈 위임. 고정 상수는 fx.py `FALLBACK_RATE` 단일 잔존(안전 폴백.
+ index.html은 `/api/fx/rate` fetch (Promise.all 병렬` → `FX_RATE` → 도넛에 사용, FX_RATE 유효 시만 렌더).
 
 - 종목별 수익률은 브로커 단위 불일치(퍼센트/비율) 피하려 KRW 손익/원금으로 직접 계산.
 
