@@ -180,8 +180,7 @@ def run_collect(snapshot_date=None):
     """전체 실행: 시세 캐시 + 일일 스냅샷 저장 후 요약 dict 반환 (수동/크론 공용)."""
     snapshot_date = snapshot_date or _date.today().isoformat()
     items = brokers.collect_portfolio()
-    if items:
-        save_quotes(items)
+    quotes_res = fetch_and_update_quotes()
     snap = collect_day_snapshot(snapshot_date)
     save_day_snapshot(snap)
     return {
@@ -192,6 +191,7 @@ def run_collect(snapshot_date=None):
         "total_profit_loss": snap["total_profit_loss"],
         "profit_rate": snap["profit_rate"],
         "fx_rate": snap["fx_rate"],
+        "quotes": quotes_res,
         "status": "ok",
     }
 
