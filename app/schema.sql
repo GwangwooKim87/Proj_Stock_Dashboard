@@ -35,34 +35,26 @@ CREATE TABLE IF NOT EXISTS holdings (
 CREATE INDEX IF NOT EXISTS idx_holdings_account ON holdings(account_id);
 CREATE INDEX IF NOT EXISTS idx_holdings_symbol  ON holdings(symbol);
 
--- 3. 종목 시세 시계열 (15분 스냅샷)
+-- 3. 종목 시세 캐시 (당일 장중 임시 캐시, symbol 단위 최신가)
 CREATE TABLE IF NOT EXISTS quotes (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    broker      TEXT,                       -- kiwoom/toss (통합일 경우 통합계좌?)
-    symbol      TEXT NOT NULL,
-    price       REAL NOT NULL,
-    currency    TEXT NOT NULL DEFAULT 'KRW',
-    price_krw   REAL,                       -- KRW 환산가 (해외주식/환율 적용)
-    base_krw    REAL,                       -- 적용 기준환율 (USD당 KRW)
-    fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    symbol           TEXT PRIMARY KEY,           -- 종목코드/틱커
+    current_price    REAL NOT NULL,              -- 현재가
+    prev_close_price REAL,                       -- 전일종가
+    change_rate      REAL,                       -- 등락률(%)
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_quotes_sym_time ON quotes(symbol, fetched_at);
 
--- 4. 일자별 확정 자산 스냅샷 (국내 15:30 / 미국 익일 06:00 마감 시점)
+-- 4. 일자별 확정 포트폴리오 스냅샷 (당일 장마감 시점, 날짜 단위 upsert)
 CREATE TABLE IF NOT EXISTS day_snapshots (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    snap_date      TEXT NOT NULL,                     -- 'YYYY-MM-DD'
-    total_value    REAL NOT NULL DEFAULT 0,        -- 총평가액 (KRW)
-    invested       REAL NOT NULL DEFAULT 0,        -- 투자원금 (KRW)
-    realized_pnl   REAL NOT NULL DEFAULT 0,       -- 실현손익
-    unrealized_pnl REAL NOT NULL DEFAULT 0,       -- 미실현손익 (평가손익)
-    krw_exposure   REAL NOT NULL DEFAULT 0,       -- 원화 노출액
-    usd_exposure   REAL NOT NULL DEFAULT 0,       -- 외화(USD) 노출액
-    captured_at     TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(account_id, snap_date)
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date          TEXT NOT NULL UNIQUE, -- 'YYYY-MM-DD'
+    total_evaluation_amount REAL NOT NULL DEFAULT 0, -- 총 평가액 (KRW)
+    total_investment_amount REAL NOT NULL DEFAULT 0, -- 총 투자원금 (KRW)
+    total_profit_loss       REAL NOT NULL DEFAULT 0, -- 총 손익 (KRW)
+    profit_rate             REAL NOT NULL DEFAULT 0, -- 수익률(%)
+    holdings_json           TEXT,                    -- 보유 종목별 종가/수익률/수량 JSON
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_snap_account_date ON day_snapshots(account_id, snap_date);
 
 -- 5. 종목 뉴스 (네이버 금융 필터링 소스, 본문 대신 제목+2줄 요약만)
 CREATE TABLE IF NOT EXISTS news_items (

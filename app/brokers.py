@@ -64,6 +64,27 @@ def _cached_token(key, getter):
     return token
 
 
+def _invalidate_token(key):
+    """401 등으로 토큰이 무효해졌을 때 캐시 제거."""
+    cache = _load_cache()
+    if key in cache:
+        del cache[key]
+        _save_cache(cache)
+
+
+def _toss_get(url, headers, timeout=10):
+    """토스 GET — 401이면 토큰 재발급 후 1회 재시도."""
+    r = requests.get(url, headers=headers, timeout=timeout)
+    if r.status_code == 401:
+        _invalidate_token("toss")
+        tok = toss_token()  # 재발급
+        if tok:
+            headers["Authorization"] = "Bearer " + tok
+            r = requests.get(url, headers=headers, timeout=timeout)
+    r.raise_for_status()
+    return r
+
+
 class Throttler:
     def __init__(self, rps=5.0):
         self._min = 1.0 / rps if rps > 0 else  0
@@ -182,8 +203,7 @@ def toss_overseas_balance():
         return {}
     url = TOSS_BASE_URL.rstrip("/") + "/api/v1/holdings"
     headers = {"Authorization": "Bearer " + tok, "X-Tossinvest-Account": seq}
-    r = requests.get(url, headers=headers, timeout=10)
-    r.raise_for_status()
+    r = _toss_get(url, headers)
     return r.json().get("result") or {}
 
 
@@ -200,8 +220,7 @@ def _toss_accounts_api():
         return [] 
     url = TOSS_BASE_URL.rstrip("/") + "/api/v1/accounts"
     headers = {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
-    r = requests.get(url, headers=headers, timeout=10)
-    r.raise_for_status()
+    r = _toss_get(url, headers)
     data = r.json()
     accs = data.get("result") or data.get("accounts") or data.get("data") or []
     if isinstance(accs, dict):
@@ -248,8 +267,19 @@ def _to_num(v, default=0.0):
         return default
 
 
+def _num_or_none(v):
+    """None/빈 값이면 None, 아니면 float."""
+    if v is None:
+        return None
+    try:
+        f = float(str(v).strip().replace(",", "").replace("+", ""))
+        return f
+    except (ValueError, TypeError):
+        return None
+
+
 def collect_portfolio():
-    """통합 보유 종목: 키움(KRW) + 토스(항목). 각 행: symbol/name/qty/avg/cur/currency/broker."""
+    """통합 보유 종목: 키움(KRW) + 토스. 행: symbol/name/qty/avg/cur/currency/broker + 평가손익/수익률."""
     portfolio = []
 
     # 키움
@@ -259,16 +289,25 @@ def collect_portfolio():
             "symbol": it.get("stk_cd"), "name": it.get("stk_nm"),
             "qty": _to_num(it.get("rmnd_qty")), "avg_price": _to_num(it.get("pur_pric")),
             "cur_price": _to_num(it.get("cur_prc")), "currency": "KRW", "broker": "kiwoom",
+            "p_pnl": _to_num(it.get("evltv_prft")), "p_pnl_rate": _to_num(it.get("prft_rt")),
+            "prev_close": _num_or_none(it.get("prdy_clpr")),
+            "change_rate": _num_or_none(it.get("prdy_ctrt")),
         })
 
     # 토스
     tb = toss_overseas_balance()
     for it in (tb.get("items") or []):
+        pl = it.get("profitLoss") or {}
         portfolio.append({
             "symbol": it.get("symbol"), "name": it.get("name"),
             "qty": _to_num(it.get("quantity")), "avg_price": _to_num(it.get("averagePurchasePrice")),
             "cur_price": _to_num(it.get("lastPrice")),
             "currency": (it.get("currency") or "USD"), "broker": "toss",
+            "p_pnl": _to_num(pl.get("amount")),
+            "p_pnl_rate": _to_num(pl.get("rate")),
+            "prev_close": _num_or_none(it.get("previousClosePrice") or it.get("prevClosePrice")),
+            "change_rate": _num_or_none(it.get("changeRate") or it.get("changePercent")
+                                          or it.get("dailyChangeRate")),
         })
 
     return portfolio
