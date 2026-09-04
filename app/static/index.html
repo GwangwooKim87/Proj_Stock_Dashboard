@@ -110,7 +110,7 @@
     // ===== M1 인증 상태 처리 (M1-2: 서버 세션 연동) =====
     const AUTH_COOKIE='sdb_session';
     function showLogin(){ $('loginOverlay').style.display='flex'; if($('appMain')) $('appMain').style.display='none'; }
-    function showDashboard(){ $('loginOverlay').style.display='none'; if($('appMain')) $('appMain').style.display='block'; }
+    function showDashboard(){ $('loginOverlay').style.display='none'; if($('appMain')) $('appMain').style.display='block'; loadDashboardData(); }
     // Route Guard: 서버 세션 쿠키 유효성 확인 (미인증 시 로그인 유지)
     async function guardInit(){
       try{
@@ -214,7 +214,10 @@
     }
     window.addEventListener('resize', ()=> trendChart && trendChart.resize());
     document.querySelectorAll('#rangeBtns .range-btn').forEach(b=>b.addEventListener('click',()=>loadTrend(b.dataset.range)));
-    loadTrend('7d');
+
+    // ===== 대시보드 데이터 로딩 (로그인 후/갱신 시 재호출) =====
+    function loadDashboardData(){
+      loadTrend('7d');
 
     fetch('/health').then(r=>r.json()).then(d=>{$('meta').textContent='db: '+d.db}).catch(()=>{});
 
@@ -281,6 +284,7 @@
         '<td class="num '+rateCls+'">'+(h.p_pnl_rate!=null?h.p_pnl_rate.toFixed(2)+'%':'-')+'</td></tr>';}).join('');
       $('status').innerHTML='<b>Status:</b> healthy · 종목 '+items.length+' · 저장 '+d.saved;
     }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
+    } // end loadDashboardData()
   </script>
 </body>
 </html>
