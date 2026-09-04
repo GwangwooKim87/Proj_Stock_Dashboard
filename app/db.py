@@ -19,11 +19,38 @@ def get_connection():
 def init_db(force=False):
     conn = get_connection()
     try:
+        _migrate_tables(conn, force)
         conn.executescript(_schema_sql())
         conn.commit()
     finally:
         conn.close()
     return DB_PATH
+
+
+def _migrate_tables(conn, force=False):
+    """기존 DB의 quotes/day_snapshots 가 구(舊) 구조면 새 구조로 재생성.
+
+    신규 컬럼(symbol PK / snapshot_date 등)이 없으면 DROP 후 schema.sql 의
+    CREATE TABLE IF NOT EXISTS 가 새 구조로 재생성하도록 한다.
+    """
+    def cols(t):
+        try:
+            return {r[1] for r in conn.execute(f"PRAGMA table_info({t})")}
+        except Exception:
+            return set()
+
+    quotes_cols = cols("quotes")
+    if quotes_cols and "current_price" not in quotes_cols:
+        conn.execute("DROP TABLE quotes")
+
+    snaps_cols = cols("day_snapshots")
+    if snaps_cols and "snapshot_date" not in snaps_cols:
+        conn.execute("DROP TABLE day_snapshots")
+
+    if force:
+        conn.execute("DROP TABLE IF EXISTS quotes")
+        conn.execute("DROP TABLE IF EXISTS day_snapshots")
+    conn.commit()
 
 
 def _schema_sql():

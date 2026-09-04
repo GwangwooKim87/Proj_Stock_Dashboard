@@ -26,10 +26,21 @@
 - 계좌 라벨: 키움="키움 ISA", 토스="토스". 토스 accountNo는 `179-01-023520`(표시 무시 결정, seq로만 사용).
 
 ## ⏭ 다음 세션 (남은 대시보드 개선)
-1. **당일 변동 + 시계열 추이선** (quotes·day_snapshots 수집부터) — 미진행
+1. **당일 변동 + 시계열 추이선** — quotes·day_snapshots 수집부터 — **진행 중(DB+수집 완료, UI 미진행)**
 2. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — 미진행 (사용자가 유예)
-3. **GitHub push**: Proj_Stock_Dashboard(또는 기존)에 올리기 — 사용자가 '아직 안함'으로 유예
+3. **GitHub push**: Proj_Stock_Dashboard → **완료** (2026-09-04, main 동기화)
 4. (선택) 네이버 뉴스 수집 + 변동성 필터링 — 미진행 (사용자가 미룸)
+
+## ✅ 시계열 DB 스키마 + 수집 로직 (~2026-09-04)
+- 스키마 재설계: `quotes`(symbol PK, current_price/prev_close_price/change_rate/updated_at),
+  `day_snapshots`(snapshot_date UNIQUE, total_evaluation_amount/investment/profit_loss/profit_rate/holdings_json/created_at).
+- db._migrate_tables(): 기존 구(舊)스키마(quotes id방식·day_snapshots 항목)를 감지해 DROP 후 재생성(멱등).
+- `app/snapshots.py`: collect_portfolio → KRW 환산 총액/손익 → day_snapshots UPSERT(snapshot_date 기준),
+  종목별 시세 quotes UPSERT. 실행 ``cd app && ../.venv/bin/python -m snapshots`` (실통신 12종목 검증 OK).
+- 종목별 수익률은 브로커 단위 불일치(퍼센트/비율)를 피하려 KRW 손익/원금으로 직접 계산.
+- brokers.collect_portfolio에 prev_close/change_rate 필드 추가(전일종가·등락률, 있으면 채움: 키움 prdy_clpr/prdy_ctrt, 토스 best-effort).
+- 환율: fx_rates 최신값 > USD_KRW_RATE env > 기본 1350.
+- ⚠️ quotes의 prev_close/change_rate는 현재 브로커 응답이 안 줘서 NULL(추이선 시 전용 시세 API 필요).
 
 ## 참고
 - app/에서 `../.venv/bin/python xx.py` 로 실행해야 import됨.
