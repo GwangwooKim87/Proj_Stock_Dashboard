@@ -171,6 +171,63 @@ def _flt(v):
         return None
 
 
+# ==================== 시계열 조회 (차트 바인딩) ====================
+_RANGE_DAYS = {"7d": 7, "30d": 30, "90d": 90}
+
+
+def get_portfolio_history(range_key="all"):
+    """day_snapshots 를 날짜 오름차순으로 조회 → 차트용 간결 구조 반환.
+
+    range_key: 7d | 30d | 90d | all (기본 all). 데이터 없으면 빈 배열 + 200 대상 구조.
+    """
+    days = _RANGE_DAYS.get(str(range_key))
+    conn = db.get_connection()
+    try:
+        if days:
+            cutoff = _date.today().fromordinal(_date.today().toordinal() - days).isoformat()
+            rows = conn.execute(
+                "SELECT snapshot_date, total_evaluation_amount, total_profit_loss, profit_rate "
+                "FROM day_snapshots WHERE snapshot_date >= ? ORDER BY snapshot_date ASC",
+                (cutoff,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT snapshot_date, total_evaluation_amount, total_profit_loss, profit_rate "
+                "FROM day_snapshots ORDER BY snapshot_date ASC").fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "range": str(range_key),
+        "count": len(rows),
+        "dates": [r["snapshot_date"] for r in rows],
+        "total_values": [r["total_evaluation_amount"] or 0 for r in rows],
+        "total_profit_loss": [r["total_profit_loss"] or 0 for r in rows],
+        "profit_rates": [r["profit_rate"] or 0 for r in rows],
+    }
+
+
+def get_quotes_summary():
+    """quotes 의 최신 종목별 등락 현황 (symbol PK 특성상 최신 레코드)."""
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT symbol, current_price, prev_close_price, change_rate, updated_at "
+            "FROM quotes ORDER BY symbol ASC").fetchall()
+    finally:
+        conn.close()
+
+    items = []
+    for r in rows:
+        items.append({
+            "symbol": r["symbol"],
+            "current_price": r["current_price"],
+            "prev_close_price": r["prev_close_price"],
+            "change_rate": r["change_rate"],
+            "updated_at": r["updated_at"],
+        })
+    return {"count": len(items), "quotes": items}
+
+
 if __name__ == "__main__":
     t0 = time.time()
     result = run_collect()

@@ -26,7 +26,15 @@
 - 계좌 라벨: 키움="키움 ISA", 토스="토스". 토스 accountNo는 `179-01-023520`(표시 무시 결정, seq로만 사용).
 
 ## ⏭ 다음 세션 (남은 대시보드 개선)
-1. **당일 변동 + 시계열 추이선** — quotes·day_snapshots 수집부터 — **진행 중(DB+수집 완료, UI 미진행)**
+1. **당일 변동 + 시계열 추이선** — **진행 중(DB+수집 완료, 시계열 조회 REST API 완료, 프론트 차트 미연동)**
+   - ✅ 시계열 조회 REST API 엔드포인트 구현 (~2026-09-04)
+     - `GET /api/portfolio/history?range={7d|30d|90d|all}`: day_snapshots 날짜 오름차순, 차트용 간결 JSON
+       `{range, count, dates[], total_values[], total_profit_loss[], profit_rates[]}`. 무효 range→전체 조회. 빈 데이터→200+빈 배열.
+       로직: `app/snapshots.py:get_portfolio_history()` (라우터 `main.py`는 호출만).
+     - `GET /api/quotes/summary`: quotes 최신 종목별 등락 `{count, quotes[{symbol,current_price,prev_close_price,change_rate,updated_at}]}`.
+       로직: `app/snapshots.py:get_quotes_summary()`.
+     - 검증: uvicorn 로컬(8091) 실기동, history 7d/all·invalid-range·quotes·빈DB(빈 배열+200) 모두 200 OK.
+   - **남음: 프론트(index.html) 차트 연동** (ECharts에 history/quotes 바인딩)
 2. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — 미진행 (사용자가 유예)
 3. **GitHub push**: Proj_Stock_Dashboard → **완료** (2026-09-04, main 동기화)
 4. (선택) 네이버 뉴스 수집 + 변동성 필터링 — 미진행 (사용자가 미룸)
