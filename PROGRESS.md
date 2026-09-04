@@ -48,10 +48,20 @@
 - 전송: Slack(C0BUM3859C2) + Telegram(8721078321). 실행 확인: status ok(12종목), 검증 history 정상.
 
 ## ✅ Git 상태 (종료 시점)
-- GitHub: **main = develop = `8483481`**(마지막 develop 헤드) + **main 최신 `f965170`** (develop→main 릴리즈 PR#4 admin 머지. main 보호: 리뷰1건 → 머지 시 `--admin`.).
+- GitHub: **main = `cd086a5`**, **develop = `4b4ad77`** — 실시간 환율 포함 완전 동기화 (릴리즈 PR#7 develop→main admin 머지. main 보호: 리뷰1건 → 머지 시 `--admin`.).
 - 원격 브랜치: main + develop 2개만 (feature/fix 모두 삭제·prune 완료. 
-- PR 이력: #1 스키마+수집 → #2 REST API+추이선 → #4 릴리즈(→main) → #5 도넛환산.
+- PR 이력: #1 스키마+수집 → #2 REST API+추이선 → #4 릴리즈(→main) → #5 도넛환산 → #6 실시간환율 → #7 릴리즈(→main).
 
+
+
+## ✅ 실시간 환율 연동 (app/fx.py, 2026-09-04 세션)
+- 신규 `app/fx.py` 실시간 USD→KRW 환율 모듈:
+  - 소스: .env `EXCHANGE_RATE_API_URL`(없으면 FX_BASE_URL, 기본 open.er-api.com/v6/latest/USD — 무료·키 없음.
+
+  - 인메모리 TTL 1h 캐시, 성공 시 fx_rates DB persist, 오류 시 폴백 체인(최근 캐시→DB→FALLBACK_RATE=1350 안전폴백`. 
+  - `get_usd_krw()`/`get_fx_summary()`.
+- `GET /api/fx/rate`: 실시간 환율+updated_at 반환 (TTL 캐시·폴백 포함. 
+- 전역 하드코딩 `1350` 제거: snapshots.get_fx_rate() → fx 위임, index.html `const FX=1350`→`/api/fx/rate` fetch(Promise.all 병렬`, FX_RATE, 유효 시만 도넛 렌더`. 고정 1350은 fx.py FALLBACK_RATE 단일 잔존. 검증: 실시간 ~1356.7(open.er-api), /api/fx/rate 200 로컬·live, JS node --check, 라이브 index.html 1350 제거 확인.
 
 
 ## ⏭ 다음 세션 (남은 작업)
