@@ -48,9 +48,9 @@
 - 전송: Slack(C0BUM3859C2) + Telegram(8721078321). 실행 확인: status ok(12종목), 검증 history 정상.
 
 ## ✅ Git 상태 (종료 시점)
-- GitHub: **main = `cd086a5`**, **develop = `4b4ad77`** — 실시간 환율 포함 완전 동기화 (릴리즈 PR#7 develop→main admin 머지. main 보호: 리뷰1건 → 머지 시 `--admin`.).
-- 원격 브랜치: main + develop 2개만 (feature/fix 모두 삭제·prune 완료. 
-- PR 이력: #1 스키마+수집 → #2 REST API+추이선 → #4 릴리즈(→main) → #5 도넛환산 → #6 실시간환율 → #7 릴리즈(→main).
+- GitHub: **main = `cd086a5`**, **develop = `98c2625`** (PR #8 squash 머지. main 보호: 리뷰1건 → 머지 시 `--admin`. `--delete-branch` 로 feature/market-quotes 원격 삭제.)
+- 원격 브랜치: main + develop 2개만.
+- PR 이력: #1 스키마+수집 → #2 REST API+추이선 → #4 릴리즈(→main) → #5 도넛환산 → #6 실시간환율 → #7 릴리즈(→main) → #8 당일변동(시세)수집.
 
 
 
@@ -64,13 +64,15 @@
 - 전역 하드코딩 `1350` 제거: snapshots.get_fx_rate() → fx 위임, index.html `const FX=1350`→`/api/fx/rate` fetch(Promise.all 병렬`, FX_RATE, 유효 시만 도넛 렌더`. 고정 1350은 fx.py FALLBACK_RATE 단일 잔존. 검증: 실시간 ~1356.7(open.er-api), /api/fx/rate 200 로컬·live, JS node --check, 라이브 index.html 1350 제거 확인.
 
 
+## ✅ 당일 변동 보강 완료 (PR #8, 2026-09-04)
+- `app/brokers.py`: `toss_prices(symbols)`(GET /api/v1/prices 다건 현재가, 국내 KRX+해외 US 통합), `toss_prev_close(symbol)`(GET /api/v1/candles 1d 전일종가 closePrice), `get_quote(symbols, with_prev_close)`(현재가+전일종가+통화, 미매칭 심볼 skip). 키움 ka10001 REST 시세는 이 배포 미노출(500) → 국내도 토스로 조회.
+- `app/snapshots.py` `fetch_and_update_quotes()`: 보유 12종목 시세 수집 → quotes에 current_price/prev_close_price/change_rate UPSERT (0나누기 예외 방지, 소수 2자리). 토스 미매칭 키움 ETF는 보유 현재가 백필. save_quotes ON CONFLICT(symbol) DO UPDATE. `python -m snapshots`(일일 크론)에 통합 → run_collect return에 quotes 결과 포함.
+- 키움 토큰 만료(8005/인증실패) 시 자동 재발급+재시도 (토스와 동일 패턴).
+- 검증: 12종목 updated, 환율 1356.73, 스냅샷 -5.25%, get_quote(005380,006800,QLD) → 현대차 384500/379500 KRW, QLD 91.22/90.38 USD.
+
 ## ⏭ 다음 세션 (남은 작업)
 1. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — **미진행** (사용자 유예)
-2. (선택) **네이버 뉴스 수집 + 변동성 필터링** — **미진행** (사용자 미룸)
-3. **당일 변동 보강**: ✅ 시세 조회 메서드 구현 (2026-09-04 세션) — `brokers.toss_prices()`/`toss_prev_close()`/`get_quote()` 추가.
-   - 토스 `/api/v1/prices` (다건 현재가, 국내 KRX+해외 US 통합), `/api/v1/candles` (1d, 전일종가 closePrice). 키움 ka10001 REST 시세는 이 배포에서 미노출(500) → 국내도 토스로 조회.
-   - 검증: get_quote(005380,006800,QLD, with_prev_close=True) → 현재가+전일종가+통화 정상 (예: 현대차 384500/379500 KRW, QLD 91.22/90.38 USD). 토스 심볼 없으면 건너뜀(A0008S0).
-   - **남음**: quotes 테이블 prev_close/change_rate 채움 + 대시보드 당일변동 표시는 아직 (다음 단계). 
+2. (선택) **네이버 뉴스 수집 + 변동성 필터링** — **미진행** (사용자 미룸) 
 
 ## 참고
 - 로컬 develop 브랜치는 원격에서 복원함(PR 병합 --delete-branch로 사라짐. `git checkout -b develop origin/develop`.)
