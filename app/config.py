@@ -15,6 +15,9 @@ class Settings:
         self.FX_BASE_URL = e.get("FX_BASE_URL", "").strip()
         self.EXCHANGE_RATE_API_URL = e.get("EXCHANGE_RATE_API_URL", "").strip()
         self.DASHBOARD_PORT = int(e.get("DASHBOARD_PORT", "8080"))
+        # Single-dashboard login (server-side session). Set in /opt/data/.env
+        self.DASHBOARD_USERNAME = e.get("DASHBOARD_USERNAME", "").strip()
+        self.DASHBOARD_PASSWORD = e.get("DASHBOARD_PASSWORD", "").strip()
         self.DB_PATH = "/data/dashboard.db"
 
 

@@ -75,6 +75,14 @@
 - `if __name__ == '__main__'`: run_collect 결과 + quotes summary 병행 출력 (수집·DB적재·요약 1회 콘솔 확인). 실행: `cd app && ../.venv/bin/python -m snapshots` → 12종목 updated/failed 0.
 - 실통신: holding 12, 수집 12 quotes updated 0 failed, 환율 1356.73, 요약 정상.
 
+## ✅ 인증(서버 세션) 구현 + env 배포 구조 파악 (2026-09-04, UI/UX M1)
+- **서버 사이드 세션 인증**: `app/auth.py`(신규) — .env 자격(`DASHBOARD_USERNAME/PASSWORD`)을 `hmac.compare_digest`로 비교, `secrets.token_urlsafe` 세션토큰(7일 TTL) httpOnly쿠키. `app/config.py`에 2개 설정 추가. `app/main.py`에 `POST /api/login|logout`, `GET /api/auth/me`, `/api/*` 전역 http 미들웨어 가드(로그인 제외, 무효→401). `/health`는 공개 유지.
+- **프론트(index.html)** M1-2 교체: 로컬세션 → 서버 세션. `guardInit()`이 `/api/auth/me`로 유효성 확인→미인증 시 로그인 overlay+`#appMain` 숨김. `doLogin()`이 실제 `/api/login` 호출, 실패 시 에러문구(#f85149). 로그인 카드 350→440→**560px**, 패딩/폰트 확대.
+- **환경변수 배포 구조 (중요)**: 이 컨테이너는 **docker run(--env-file) 방식**이지 docker-compose가 아님(compose label 없음, 볼륨 마운트 `./app` 없음). 그러므로 ①새 env 키는 `--env-file /opt/data/.env`로 주입하고 ②코드는 `docker cp`로 반영해야 함. `docker restart`는 env를 재로드하지 않으므로 **새 env는 컨테이너 재생성(`docker rm -f`+`docker run -d --env-file /opt/data/.env ...`) 필요**.
+- **배포된 컨테이너 재생성**: `docker rm -f stock-dash; docker run -d --name stock-dash --restart unless-stopped -p 8080:8080 -e TZ=Asia/Seoul -e PYTHONUNBUFFERED=1 --env-file /opt/data/.env -v stock_dash_data:/data stock-dash:latest uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 1` + 최신 코드 docker cp 8개 파일.
+- **검증(실배포)**: 미로그인 /api/auth/me→401, 틀린 로그인→401, `.env` 실자격 로그인→200+쿠키, 이후 auth/me·portfolio→200, 로그아웃→200, 이후 auth/me→401. 사용자가 /opt/data/.env 606~607행에 자격 입력.(값 마스킹)
+- **주의**: .env 내 DASHBOARD 키는 이전에는 없었음 → 사용자 직접 입력. 추후 브로커 키처럼 --env-file로만 주입.
+
 ## ⏭ 다음 세션 (남은 작업)
 1. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — **미진행** (사용자 유예)
 2. (선택) **네이버 뉴스 수집 + 변동성 필터링** — **미진행** (사용자 미룸) 

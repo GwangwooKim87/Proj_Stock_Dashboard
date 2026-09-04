@@ -1,18 +1,64 @@
 """FastAPI entrypoint: healthcheck + account auto-collection + index."""
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel
 
-from . import db, brokers, snapshots, fx
+from . import db, brokers, snapshots, fx, auth, config
 
 
 app = FastAPI(title="Stock Dashboard", version="0.1.0")
 
 
+class LoginBody(BaseModel):
+    username: str = ""
+    password: str = ""
+    remember: bool = False
+
+
 @app.on_event("startup")
 def _startup():
     db.init_db()
-    # 계좌 자동수집(순서)은 /api/accounts 호출 시 수행한다.
+    # 계좌자동수집(순서)은 /api/accounts 호출 시 수행한다.
+
+
+# ===== Serve-side session auth guard on /api/* (except /api/login) =====
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    path = request.url.path
+    is_api = path.startswith("/api/")
+    if is_api and path != "/api/login":
+        token = request.cookies.get(auth.COOKIE)
+        if not auth.validate(token):
+            return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    return await call_next(request)
+
+
+@app.post("/api/login")
+def login(body: LoginBody):
+    if not config.settings.DASHBOARD_USERNAME or not config.settings.DASHBOARD_PASSWORD:
+        return JSONResponse({"detail": "auth not configured"}, status_code=503)
+    if not auth.verify_login(body.username, body.password):
+        return JSONResponse({"detail": "invalid credentials"}, status_code=401)
+    token, max_age = auth.create_session()
+    resp = JSONResponse({"ok": True, "session": True})
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
+                    max_age=max_age if body.remember else None)
+    return resp
+
+
+@app.post("/api/logout")
+def logout(request: Request):
+    auth.revoke(request.cookies.get(auth.COOKIE))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE)
+    return resp
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    # Reached only when the middleware validated the cookie -> authenticated.
+    return {"authenticated": True}
 
 
 @app.get("/health")
