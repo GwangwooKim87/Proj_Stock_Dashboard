@@ -128,22 +128,42 @@ def kiwoom_token():
     return _cached_token("kiwoom", _kiwoom_token_getter)
 
 
+def _kiwoom_get_holdings(headers, body):
+    """키움 잔고 POST. 인증실패(8005/Token invalid)면 토큰 재발급 후 1회 재시도."""
+    for attempt in (1, 2):
+        r = requests.post(KIWOOM_BASE_URL.rstrip("/") + "/api/dostk/acnt",
+                          json=body, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        code = data.get("return_code")
+        # 토큰 무효 시 재발급 + 재시도
+        if (r.status_code != 200) or (code and str(code) != "0"):
+            msg = str(data.get("return_msg", ""))
+            if "Token" in msg or "token" in msg or "인증" in msg:
+                if attempt == 1:
+                    _invalidate_token("kiwoom")
+                    tok = kiwoom_token()
+                    if tok:
+                        headers["Authorization"] = "Bearer " + tok
+                        continue
+            return [], {}
+        return (data.get("acnt_evlt_remn_indv_tot") or data.get("output1") or [],
+                data)
+    return [], {}
+
+
 def kiwoom_holdings():
-    """보유 종목 + 계좌 요약 (POST /api/dostk/acnt, api-id kt00018)."""
+    """보유 종목 + 계좌 요약 (POST /api/dostk/acnt, api-id kt00018). 토큰 만료 시 자동 재발급."""
     tok = kiwoom_token()
     if not tok or not KIWOOM_ACCOUNT_NO:
         return [], {}
-    url = KIWOOM_BASE_URL.rstrip("/") + "/api/dostk/acnt"
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "Authorization": "Bearer " + tok,
         "api-id": "kt00018",
     }
     body = {"acctNo": KIWOOM_ACCOUNT_NO, "qry_tp": "2", "dmst_stex_tp": "KRX"}
-    r = requests.post(url, json=body, headers=headers, timeout=10)
-    r.raise_for_status()
-    data = r.json()
-    holdings = data.get("acnt_evlt_remn_indv_tot") or data.get("output1") or []
+    holdings, data = _kiwoom_get_holdings(headers, body)
     summary = {
         "tot_evlt_amt": data.get("tot_evlt_amt"),
         "tot_pur_amt": data.get("tot_pur_amt"),
