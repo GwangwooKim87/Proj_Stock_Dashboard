@@ -267,6 +267,17 @@ def _to_num(v, default=0.0):
         return default
 
 
+def _num_or_none(v):
+    """None/빈 값이면 None, 아니면 float."""
+    if v is None:
+        return None
+    try:
+        f = float(str(v).strip().replace(",", "").replace("+", ""))
+        return f
+    except (ValueError, TypeError):
+        return None
+
+
 def collect_portfolio():
     """통합 보유 종목: 키움(KRW) + 토스. 행: symbol/name/qty/avg/cur/currency/broker + 평가손익/수익률."""
     portfolio = []
@@ -279,6 +290,8 @@ def collect_portfolio():
             "qty": _to_num(it.get("rmnd_qty")), "avg_price": _to_num(it.get("pur_pric")),
             "cur_price": _to_num(it.get("cur_prc")), "currency": "KRW", "broker": "kiwoom",
             "p_pnl": _to_num(it.get("evltv_prft")), "p_pnl_rate": _to_num(it.get("prft_rt")),
+            "prev_close": _num_or_none(it.get("prdy_clpr")),
+            "change_rate": _num_or_none(it.get("prdy_ctrt")),
         })
 
     # 토스
@@ -292,6 +305,9 @@ def collect_portfolio():
             "currency": (it.get("currency") or "USD"), "broker": "toss",
             "p_pnl": _to_num(pl.get("amount")),
             "p_pnl_rate": _to_num(pl.get("rate")),
+            "prev_close": _num_or_none(it.get("previousClosePrice") or it.get("prevClosePrice")),
+            "change_rate": _num_or_none(it.get("changeRate") or it.get("changePercent")
+                                          or it.get("dailyChangeRate")),
         })
 
     return portfolio
