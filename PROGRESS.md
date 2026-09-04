@@ -93,7 +93,7 @@
   4. (선택)**네이버 뉴스 수집+변동성 필터링** — 미진행 (미룸)
 
 ## 참고
-- 로컬 develop 브랜치는 원격에서 복원함(PR 병합 --delete-branch로 사라짐. `git checkout -b develop origin/develop`.)
+- **머지 정책 (2026-09-04~)**: Hermes는 develop까지만 머지. main 머지는 사용자가 직접. (개발 브랜치는 원격에서 복원: `git checkout -b develop origin/develop`.)
 - /opt/data/.env: KIWOOM_APP_KEY/SECRET/ACCOUNT_NO, TOSSINVEST_CLIENT_ID/SECRET, GITHUB_TOKEN. (TOSS_ACCOUNT_SEQ 자동.
 
 - 브라우저 렌더링(live 도넛/추이선)은 이 환경 브라우저 daemon 미기동으로 미확인 — 사용자 직접 확인. JS 구문은 node --check로 검증.
