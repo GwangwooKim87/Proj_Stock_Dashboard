@@ -23,11 +23,26 @@
   .red{ color:#ff5c5c;} .green{ color:#4ade80;}
   .tag{ display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#252a35; color:#9aa0aa; margin-left:6px;}
   .st{margin:4px 0;}
+  .range-btn{ background:#252a35; border:1px solid #2a2e38; color:#9aa0aa; border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s;}
+  .range-btn:hover{ color:#e8e8e8;}
+  .range-btn.active{ background:#1f6feb33; border-color:#1f6feb; color:#7db4ff;}
 </style>
 </head>
 <body>
   <h1>Stock Dashboard</h1>
   <div class="muted" id="meta">loading health...</div>
+
+  <div class="card" style="margin:16px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <b>총자산 시계열 추이</b>
+      <div id="rangeBtns">
+        <button class="range-btn active" data-range="7d">7일</button>
+        <button class="range-btn" data-range="30d">30일</button>
+        <button class="range-btn" data-range="all">전체</button>
+      </div>
+    </div>
+    <div id="trendChart" style="height:320px;"></div>
+  </div>
 
   <div class="sum" id="summary"></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:16px 0;">
@@ -45,6 +60,61 @@
   <script>
     const $=id=>document.getElementById(id);
     const fmt=(n,cur='')=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); return cur? s+' '+cur : s; };
+
+    // ===== 총자산 시계열 추이선 (Area chart) =====
+    const RANGE_DEFAULTS = {'7d':'7일','30d':'30일','all':'전체'};
+    const trendOption = (data) => ({
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor:'#1a1d24', borderColor:'#2a2e38', borderWidth:1,
+        textStyle:{ color:'#e8e8e8', fontSize:12 },
+        formatter: function(ps){
+          const i = ps && ps[0] ? ps[0].dataIndex : -1;
+          if (i<0 || !data.dates[i]) return '';
+          const v = data.total_values[i];
+          const r = data.profit_rates?.[i];
+          const d = data.dates[i];
+          return '<b>'+d+'</b><br/>총평가액: '+fmt(v,'원')+
+                 '<br/>변동률: '+(r!=null? Number(r).toFixed(2)+'%' : '-');
+        }
+      },
+      grid:{ left:'12%', right:'5%', top:'12%', bottom:'12%' },
+      xAxis:{
+        type:'category', boundaryGap:false, data:data.dates,
+        axisLine:{ lineStyle:{ color:'#2a2e38' } },
+        axisLabel:{ color:'#9aa0aa', fontSize:11 }
+      },
+      yAxis:{
+        type:'value',
+        axisLabel:{ color:'#9aa0aa', fontSize:11,
+          formatter: v => v>=1e8 ? (v/1e8).toFixed(1)+'억' : v>=1e4 ? (v/1e4).toFixed(1)+'만' : fmt(v) },
+        splitLine:{ lineStyle:{ color:'#22262f' } }
+      },
+      series:[{
+        name:'총평가액', type:'line', smooth:true, showSymbol:data.dates.length<=31,
+        lineStyle:{ width:2, color:'#4ade80' }, itemStyle:{ color:'#4ade80' },
+        areaStyle:{ color: new echarts.graphic.LinearGradient(0,0,0,1, [
+          { offset:0, color:'rgba(74,222,128,0.35)' }, { offset:1, color:'rgba(74,222,128,0)' }
+        ])},
+        data:data.total_values
+      }]
+    });
+
+    let trendChart = null;
+    async function loadTrend(range){
+      document.querySelectorAll('#rangeBtns .range-btn')
+        .forEach(b=>b.classList.toggle('active', b.dataset.range===range));
+      try{
+        const res = await fetch('/api/portfolio/history?range='+range);
+        const data = await res.json();
+        if(!trendChart && window.echarts && $('trendChart')) trendChart = echarts.init($('trendChart'));
+        if(trendChart && data) trendChart.setOption(trendOption(data), true);
+      }catch(e){ /* 차트 로드 실패는 전체 대시보드에 영향 없도록 조용히 */ }
+    }
+    window.addEventListener('resize', ()=> trendChart && trendChart.resize());
+    document.querySelectorAll('#rangeBtns .range-btn').forEach(b=>b.addEventListener('click',()=>loadTrend(b.dataset.range)));
+    loadTrend('7d');
 
     fetch('/health').then(r=>r.json()).then(d=>{$('meta').textContent='db: '+d.db}).catch(()=>{});
 

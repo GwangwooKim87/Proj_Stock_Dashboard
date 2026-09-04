@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 
-from . import db, brokers
+from . import db, brokers, snapshots
 
 
 app = FastAPI(title="Stock Dashboard", version="0.1.0")
@@ -40,6 +40,18 @@ def portfolio():
         if seq:
             saved.append(db.save_holdings(seq, "toss", to))
     return JSONResponse({"holdings": items, "count": len(items), "saved": len(saved)})
+
+
+@app.get("/api/portfolio/history")
+def portfolio_history(range: str = "all"):
+    """day_snapshots 시계열 조회 (7d|30d|90d|all). 차트 바인딩용 간결 JSON."""
+    return JSONResponse(snapshots.get_portfolio_history(range_key=range))
+
+
+@app.get("/api/quotes/summary")
+def quotes_summary():
+    """quotes 최신 종목별 등락 현황."""
+    return JSONResponse(snapshots.get_quotes_summary())
 
 
 @app.get("/")
