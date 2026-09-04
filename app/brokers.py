@@ -128,22 +128,42 @@ def kiwoom_token():
     return _cached_token("kiwoom", _kiwoom_token_getter)
 
 
+def _kiwoom_get_holdings(headers, body):
+    """키움 잔고 POST. 인증실패(8005/Token invalid)면 토큰 재발급 후 1회 재시도."""
+    for attempt in (1, 2):
+        r = requests.post(KIWOOM_BASE_URL.rstrip("/") + "/api/dostk/acnt",
+                          json=body, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        code = data.get("return_code")
+        # 토큰 무효 시 재발급 + 재시도
+        if (r.status_code != 200) or (code and str(code) != "0"):
+            msg = str(data.get("return_msg", ""))
+            if "Token" in msg or "token" in msg or "인증" in msg:
+                if attempt == 1:
+                    _invalidate_token("kiwoom")
+                    tok = kiwoom_token()
+                    if tok:
+                        headers["Authorization"] = "Bearer " + tok
+                        continue
+            return [], {}
+        return (data.get("acnt_evlt_remn_indv_tot") or data.get("output1") or [],
+                data)
+    return [], {}
+
+
 def kiwoom_holdings():
-    """보유 종목 + 계좌 요약 (POST /api/dostk/acnt, api-id kt00018)."""
+    """보유 종목 + 계좌 요약 (POST /api/dostk/acnt, api-id kt00018). 토큰 만료 시 자동 재발급."""
     tok = kiwoom_token()
     if not tok or not KIWOOM_ACCOUNT_NO:
         return [], {}
-    url = KIWOOM_BASE_URL.rstrip("/") + "/api/dostk/acnt"
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "Authorization": "Bearer " + tok,
         "api-id": "kt00018",
     }
     body = {"acctNo": KIWOOM_ACCOUNT_NO, "qry_tp": "2", "dmst_stex_tp": "KRX"}
-    r = requests.post(url, json=body, headers=headers, timeout=10)
-    r.raise_for_status()
-    data = r.json()
-    holdings = data.get("acnt_evlt_remn_indv_tot") or data.get("output1") or []
+    holdings, data = _kiwoom_get_holdings(headers, body)
     summary = {
         "tot_evlt_amt": data.get("tot_evlt_amt"),
         "tot_pur_amt": data.get("tot_pur_amt"),
@@ -265,6 +285,85 @@ def _to_num(v, default=0.0):
         return float(s)
     except ValueError:
         return default
+
+
+# ==================== 시세 조회 (Toss) ====================
+def toss_prices(symbols):
+    """다건 현재가 조회 (GET /api/v1/prices, symbols 콤마구분, 최대 200). 토큰만 필요.
+    반환: {symbol: {current_price, currency, timestamp}}"""
+    tok = toss_token()
+    if not tok or not symbols:
+        return {}
+    url = TOSS_BASE_URL.rstrip("/") + "/api/v1/prices"
+    headers = {"Authorization": "Bearer " + tok}
+    sym = ",".join(str(s).strip() for s in (symbols if isinstance(symbols, (list, tuple)) else [symbols]) if s)
+    if not sym:
+        return {}
+    try:
+        import urllib.parse as _up
+        q = _up.urlencode({"symbols": sym})
+        r = _toss_get(url + "?" + q, {**headers, "Content-Type": "application/json"})
+        data = r.json()
+    except Exception:
+        return {}
+    out = {}
+    for it in (data.get("result") or []):
+        sym2 = it.get("symbol")
+        if sym2:
+            out[sym2] = {
+                "current_price": _to_num(it.get("lastPrice")),
+                "currency": it.get("currency") or "KRW",
+                "timestamp": it.get("timestamp"),
+            }
+    return out
+
+
+def toss_prev_close(symbol, count=2):
+    """전일종가 (전날 1d 캔들 closePrice candlestick. 단일 심볼.)"""
+    tok = toss_token()
+    if not tok or not symbol:
+        return None
+    url = TOSS_BASE_URL.rstrip("/") + "/api/v1/candles"
+    headers = {"Authorization": "Bearer " + tok}
+    try:
+        import urllib.parse as _up
+        q = _up.urlencode({"symbol": symbol, "interval": "1d", "count": count})
+        r = _toss_get(url + "?" + q, {**headers, "Content-Type": "application/json"})
+        data = r.json()
+        candles = (data.get("result") or {}).get("candles") or []
+        # 첫 봉 = 당일, 두번째 = 전일 (당일 미체결이면 첫 봉이 전일)
+        if len(candles) >= 2:
+            return _to_num(candles[1].get("closePrice"))
+        if candles:
+            return _to_num(candles[0].get("closePrice"))
+    except Exception:
+        pass
+    return None
+
+
+def get_quote(symbols, with_prev_close=False):
+    """통합 시세 조회: 현재가(+선택 전일종가,. 키움 없이 토스 prices/candles 사용 (국내/해외 모두).
+
+    → [{symbol, current_price, prev_close_price, currency}]. 조회 실패 항목은 건너뜀."""
+    syms = [s for s in (symbols or []) if s]
+    if not syms:
+        return []
+    prices = toss_prices(syms)
+    rows = []
+    for s in syms:
+        p = prices.get(s)
+        if not p:
+            continue
+        prev = None
+        if with_prev_close:
+            prev = toss_prev_close(s)
+        rows.append({
+            "symbol": s,
+            "current_price": p.get("current_price"),
+            "prev_close_price": prev,
+            "currency": p.get("currency") or ("USD" if s.isalpha() else "KRW"),
+        })
+    return rows
 
 
 def _num_or_none(v):

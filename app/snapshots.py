@@ -98,8 +98,61 @@ def save_day_snapshot(snap):
         conn.close()
 
 
+def fetch_and_update_quotes():
+    """보유 종목 시세 수집 → quotes 테이블 UPSERT (당일 변동).
+
+    1) brokers.collect_portfolio() 로 보유 심볼 확보 (키움 3 + 토스 9 = 12종목)
+    2) brokers.get_quote() 로 current_price/prev_close_price 수집 (토스 prices+candles)
+    3) change_rate = (cur - prev) / prev * 100, 0나누기 예외 방지, 소수 2자리 반올림
+    4) save_quotes() 가 quotes UPSERT (ON CONFLICT(symbol) DO UPDATE)
+
+    API 자체 등락률 필드가 있으면 해당 값 우선 (get_quote 는 미제공 → 계산 사용).
+    반환: {updated: n, failed: m}.
+    """
+    items = brokers.collect_portfolio()
+    symbols = []
+    for it in items:
+        if it.get("symbol"):
+            symbols.append(it["symbol"])
+    if not symbols:
+        return {"updated": 0, "failed": 0}
+
+    rows = brokers.get_quote(list(dict.fromkeys(symbols)), with_prev_close=True)
+
+    # 토스 미매칭 키움 ETF(A0008S0 등)는 get_quote 가 건너뜀 -> 보유 내역의 현재가로만 백필
+    by_symbol = {r["symbol"]: r for r in rows}
+    for it in items:
+        sym = it.get("symbol")
+        if not sym or sym in by_symbol:
+            continue
+        by_symbol[sym] = {
+            "symbol": sym,
+            "current_price": it.get("cur_price"),
+            "prev_close_price": None,
+            "currency": it.get("currency") or "KRW",
+        }
+
+    prepared = []
+    for sym in symbols:
+        r = by_symbol.get(sym)
+        if not r:
+            continue
+        cur = _flt(r.get("current_price"))
+        prev = _flt(r.get("prev_close_price"))
+        if cur is None:
+            continue
+        if prev and prev != 0:
+            rate = round(((cur - prev) / prev) * 100.0, 2)
+        else:
+            rate = None
+        prepared.append({"symbol": sym, "current_price": cur, "prev_close_price": prev, "change_rate": rate})
+
+    save_quotes(prepared)
+    return {"updated": len(prepared), "failed": len(symbols) - len(prepared)}
+
+
 def save_quotes(items):
-    """종목별 시세 캐시 UPSERT (symbol PK). items 는 collect_portfolio() 행."""
+    """종목별 시세 캐시 UPSERT (symbol PK). items 는 fetch_and_update_quotes()가 만든 dict 행."""
     conn = db.get_connection()
     try:
         for it in items:
@@ -114,8 +167,10 @@ def save_quotes(items):
                     prev_close_price=excluded.prev_close_price,
                     change_rate=excluded.change_rate,
                     updated_at=excluded.updated_at
-            """, (symbol, float(it.get("cur_price") or 0.0),
-                  _flt(it.get("prev_close")), _flt(it.get("change_rate"))))
+            """, (symbol,
+                  float(it.get("current_price", it.get("cur_price", 0.0)) or 0.0),
+                  _flt(it.get("prev_close_price", it.get("prev_close"))),
+                  _flt(it.get("change_rate"))))
         conn.commit()
     finally:
         conn.close()
@@ -125,8 +180,7 @@ def run_collect(snapshot_date=None):
     """전체 실행: 시세 캐시 + 일일 스냅샷 저장 후 요약 dict 반환 (수동/크론 공용)."""
     snapshot_date = snapshot_date or _date.today().isoformat()
     items = brokers.collect_portfolio()
-    if items:
-        save_quotes(items)
+    quotes_res = fetch_and_update_quotes()
     snap = collect_day_snapshot(snapshot_date)
     save_day_snapshot(snap)
     return {
@@ -137,6 +191,7 @@ def run_collect(snapshot_date=None):
         "total_profit_loss": snap["total_profit_loss"],
         "profit_rate": snap["profit_rate"],
         "fx_rate": snap["fx_rate"],
+        "quotes": quotes_res,
         "status": "ok",
     }
 
@@ -198,11 +253,12 @@ def get_quotes_summary():
 
     items = []
     for r in rows:
+        # 프론트엔드 에러 방지: NULL(누락) 값은 0.0 으로 방어 처리
         items.append({
             "symbol": r["symbol"],
-            "current_price": r["current_price"],
-            "prev_close_price": r["prev_close_price"],
-            "change_rate": r["change_rate"],
+            "current_price": _flt(r["current_price"]) or 0.0,
+            "prev_close_price": _flt(r["prev_close_price"]) or 0.0,
+            "change_rate": _flt(r["change_rate"]) or 0.0,
             "updated_at": r["updated_at"],
         })
     return {"count": len(items), "quotes": items}
@@ -212,4 +268,10 @@ if __name__ == "__main__":
     t0 = time.time()
     result = run_collect()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    # 2) 엔드포인트와 동일한 비즈니스 로직 재사용 → DB 적재 결과를 요약 조회로 콘솔 확인
+    summary = get_quotes_summary()
+    print("\n[quotes summary] count =", summary["count"])
+    for q in summary["quotes"]:
+        print("  {} cur={} prev={} chg={}%".format(
+            q["symbol"], q["current_price"], q["prev_close_price"], q["change_rate"]))
     print(f"elapsed: {time.time() - t0:.1f}s")
