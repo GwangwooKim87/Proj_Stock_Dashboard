@@ -11,34 +11,14 @@ import time
 from datetime import date as _date
 
 try:
-    from . import db, brokers
+    from . import db, brokers, fx
 except ImportError:  # 스크립트 직접 실행 시 (python -m snapshots)
-    import db, brokers  # noqa: F401
-
-# USD→KRW 기준환율: fx_rates 테이블 최신값 > 환경변수 > 기본 1350
-_FX_DEFAULT = 1350.0
+    import db, brokers, fx  # noqa: F401
 
 
 def get_fx_rate():
-    env = os.getenv("USD_KRW_RATE")
-    if env:
-        try:
-            return float(env)
-        except ValueError:
-            pass
-    try:
-        conn = db.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT rate FROM fx_rates WHERE pair='USDKRW' ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            if row and row["rate"]:
-                return float(row["rate"])
-        finally:
-            conn.close()
-    except Exception:
-        pass
-    return _FX_DEFAULT
+    """USD→KRW 환율 (실시간 fx 모듈 폴백 체인: 캐시→DB→기본값)."""
+    return fx.get_usd_krw()
 
 
 def _to_krw(amount, currency, fx):

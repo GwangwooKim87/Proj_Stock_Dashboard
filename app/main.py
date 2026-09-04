@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 
-from . import db, brokers, snapshots
+from . import db, brokers, snapshots, fx
 
 
 app = FastAPI(title="Stock Dashboard", version="0.1.0")
@@ -52,6 +52,12 @@ def portfolio_history(range: str = "all"):
 def quotes_summary():
     """quotes 최신 종목별 등락 현황."""
     return JSONResponse(snapshots.get_quotes_summary())
+
+
+@app.get("/api/fx/rate")
+def fx_rate():
+    """실시간 USD→KRW 환율 (TTL 1h, 폴백 포함)."""
+    return JSONResponse(fx.get_fx_summary())
 
 
 @app.get("/")
