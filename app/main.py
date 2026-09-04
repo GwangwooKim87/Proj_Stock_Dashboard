@@ -40,10 +40,11 @@ def login(body: LoginBody):
         return JSONResponse({"detail": "auth not configured"}, status_code=503)
     if not auth.verify_login(body.username, body.password):
         return JSONResponse({"detail": "invalid credentials"}, status_code=401)
-    token, max_age = auth.create_session()
+    token, _ = auth.create_session()
     resp = JSONResponse({"ok": True, "session": True})
-    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
-                    max_age=max_age if body.remember else None)
+    # 항상 세션쿠키(영구X): 브라우저(탭) 종료 시 로그인 화면으로 복귀.
+    # Remember Me 와 무관하게 지속 쿠키는 만들지 않는다.
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax")
     return resp
 
 
