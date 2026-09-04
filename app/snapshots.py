@@ -253,11 +253,12 @@ def get_quotes_summary():
 
     items = []
     for r in rows:
+        # 프론트엔드 에러 방지: NULL(누락) 값은 0.0 으로 방어 처리
         items.append({
             "symbol": r["symbol"],
-            "current_price": r["current_price"],
-            "prev_close_price": r["prev_close_price"],
-            "change_rate": r["change_rate"],
+            "current_price": _flt(r["current_price"]) or 0.0,
+            "prev_close_price": _flt(r["prev_close_price"]) or 0.0,
+            "change_rate": _flt(r["change_rate"]) or 0.0,
             "updated_at": r["updated_at"],
         })
     return {"count": len(items), "quotes": items}
@@ -267,4 +268,10 @@ if __name__ == "__main__":
     t0 = time.time()
     result = run_collect()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    # 2) 엔드포인트와 동일한 비즈니스 로직 재사용 → DB 적재 결과를 요약 조회로 콘솔 확인
+    summary = get_quotes_summary()
+    print("\n[quotes summary] count =", summary["count"])
+    for q in summary["quotes"]:
+        print("  {} cur={} prev={} chg={}%".format(
+            q["symbol"], q["current_price"], q["prev_close_price"], q["change_rate"]))
     print(f"elapsed: {time.time() - t0:.1f}s")

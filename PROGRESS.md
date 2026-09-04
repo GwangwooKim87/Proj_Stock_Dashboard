@@ -70,6 +70,11 @@
 - 키움 토큰 만료(8005/인증실패) 시 자동 재발급+재시도 (토스와 동일 패턴).
 - 검증: 12종목 updated, 환율 1356.73, 스냅샷 -5.25%, get_quote(005380,006800,QLD) → 현대차 384500/379500 KRW, QLD 91.22/90.38 USD.
 
+## ✅ /api/quotes/summary 방어 + 단독 실행 테스트 (2026-09-04)
+- `snapshots.get_quotes_summary()`: NULL 누락(prev_close_price/change_rate — 키움 ETF 3종목) → `0.0` 방어 처리 (프론트 렌더 에러 방지). 검증: 12종목 `count=12`, remaining_nulls=0. HTTP 200 확인 (uvicorn 로컬 /api/quotes/summary).
+- `if __name__ == '__main__'`: run_collect 결과 + quotes summary 병행 출력 (수집·DB적재·요약 1회 콘솔 확인). 실행: `cd app && ../.venv/bin/python -m snapshots` → 12종목 updated/failed 0.
+- 실통신: holding 12, 수집 12 quotes updated 0 failed, 환율 1356.73, 요약 정상.
+
 ## ⏭ 다음 세션 (남은 작업)
 1. **AI 브리핑 카드** → Hermes 직접 처리로 연결 — **미진행** (사용자 유예)
 2. (선택) **네이버 뉴스 수집 + 변동성 필터링** — **미진행** (사용자 미룸) 
