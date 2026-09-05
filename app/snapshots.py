@@ -11,9 +11,9 @@ import time
 from datetime import date as _date
 
 try:
-    from . import db, brokers, fx
+    from . import db, brokers, fx, manual
 except ImportError:  # 스크립트 직접 실행 시 (python -m snapshots)
-    import db, brokers, fx  # noqa: F401
+    import db, brokers, fx, manual  # noqa: F401
 
 
 def get_fx_rate():
@@ -25,11 +25,20 @@ def _to_krw(amount, currency, fx):
     return float(amount or 0.0) * (fx if (currency or "KRW") != "KRW" else 1.0)
 
 
-def collect_day_snapshot(snapshot_date=None):
-    """포폴리오 조회 → KRW 환산 총액/손익 계산 → day_snapshots 행 dict 반환."""
+def collect_all_items(broker_items=None):
+    """브로커 실시간 보유(키움+토스) + 수동 등록 자산(IRP 등) 병합.
+
+    broker_items 를 넘기면 brokers.collect_portfolio() 재조회를 생략한다
+    (run_collect 에서 동일 데이터를 여러 단계가 재사용하기 위함)."""
+    items = broker_items if broker_items is not None else brokers.collect_portfolio()
+    return list(items) + manual.list_holdings_for_portfolio()
+
+
+def collect_day_snapshot(snapshot_date=None, broker_items=None):
+    """포폴리오 조회(브로커+수동) → KRW 환산 총액/손익 계산 → day_snapshots 행 dict 반환."""
     snapshot_date = snapshot_date or _date.today().isoformat()
     fx = get_fx_rate()
-    items = brokers.collect_portfolio()
+    items = collect_all_items(broker_items)
 
     total_eval = 0.0
     total_invested = 0.0
@@ -98,10 +107,11 @@ def save_day_snapshot(snap):
         conn.close()
 
 
-def fetch_and_update_quotes():
+def fetch_and_update_quotes(broker_items=None):
     """보유 종목 시세 수집 → quotes 테이블 UPSERT (당일 변동).
 
     1) brokers.collect_portfolio() 로 보유 심볼 확보 (키움 3 + 토스 9 = 12종목)
+       + manual_holdings(IRP 등)의 ticker 도 같은 배치에 포함
     2) brokers.get_quote() 로 current_price/prev_close_price 수집 (토스 prices+candles)
     3) change_rate = (cur - prev) / prev * 100, 0나누기 예외 방지, 소수 2자리 반올림
     4) save_quotes() 가 quotes UPSERT (ON CONFLICT(symbol) DO UPDATE)
@@ -109,17 +119,22 @@ def fetch_and_update_quotes():
     API 자체 등락률 필드가 있으면 해당 값 우선 (get_quote 는 미제공 → 계산 사용).
     반환: {updated: n, failed: m}.
     """
-    items = brokers.collect_portfolio()
+    items = broker_items if broker_items is not None else brokers.collect_portfolio()
+    manual_rows = manual.list_holdings()
     symbols = []
     for it in items:
         if it.get("symbol"):
             symbols.append(it["symbol"])
+    for m in manual_rows:
+        if m.get("ticker"):
+            symbols.append(m["ticker"])
     if not symbols:
         return {"updated": 0, "failed": 0}
 
     rows = brokers.get_quote(list(dict.fromkeys(symbols)), with_prev_close=True)
 
-    # 토스 미매칭 키움 ETF(A0008S0 등)는 get_quote 가 건너뜀 -> 보유 내역의 현재가로만 백필
+    # 토스 미매칭 키움 ETF(A0008S0 등)는 get_quote 가 건너뜀 -> 보유 내역의 현재가로만 백필.
+    # (수동 등록 종목은 백필할 "보유 현재가" 자체가 없으므로 매칭 실패 시 quotes 의 이전 캐시가 그대로 유지된다.)
     by_symbol = {r["symbol"]: r for r in rows}
     for it in items:
         sym = it.get("symbol")
@@ -177,15 +192,19 @@ def save_quotes(items):
 
 
 def run_collect(snapshot_date=None):
-    """전체 실행: 시세 캐시 + 일일 스냅샷 저장 후 요약 dict 반환 (수동/크론 공용)."""
+    """전체 실행: 시세 캐시 + 일일 스냅샷 저장 후 요약 dict 반환 (수동/크론 공용).
+
+    브로커 실시간 조회(brokers.collect_portfolio)는 1회만 수행하고 시세갱신·
+    스냅샷집계 양쪽에 재사용한다 (수동자산 병합 전엔 이미 3회 중복 호출이었음)."""
     snapshot_date = snapshot_date or _date.today().isoformat()
     items = brokers.collect_portfolio()
-    quotes_res = fetch_and_update_quotes()
-    snap = collect_day_snapshot(snapshot_date)
+    quotes_res = fetch_and_update_quotes(items)
+    snap = collect_day_snapshot(snapshot_date, items)
     save_day_snapshot(snap)
+    holdings_count = len(items) + len(manual.list_holdings())
     return {
         "snapshot_date": snapshot_date,
-        "holdings_count": len(items),
+        "holdings_count": holdings_count,
         "total_evaluation_amount": snap["total_evaluation_amount"],
         "total_investment_amount": snap["total_investment_amount"],
         "total_profit_loss": snap["total_profit_loss"],

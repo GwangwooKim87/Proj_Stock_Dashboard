@@ -1,4 +1,4 @@
-# Stock Dashboard — PROGRESS (세션간 핸드오프) · 최종 갱신 2026-09-05 (M6)
+# Stock Dashboard — PROGRESS (세션간 핸드오프) · 최종 갱신 2026-09-05 (M7)
 
 ## ✅ 완료·검증됨 (실통신)
 - **토스/키움 실연동**: 토큰·잔고·보유 조회 → 12종목(키움3+토스9) 평가손익/수익률 통합. 토스 401 토큰 자동재발급, 5분 rate-limit 캐시.
@@ -205,8 +205,23 @@
 - 검증: 1년치 랜덤 테스트 데이터(367일)로 Node 재현 → 13개월 정상 집계(예: 2026-01 월수익 +3.35%, 누적수익 +8.78%). `node --check` 통과, live 반영·마크업 확인.
 - **테스트 데이터 정리 완료**: 검증에 썼던 1년치(2025-09-04~2026-09-03) 랜덤워크 테스트 데이터 365건을 `day_snapshots`에서 삭제, 실데이터(2026-09-04·09-05) 2건만 남김.
 
+## ✅ M7: 좌측 사이드바 + IRP 등 수동 자산 관리 (2026-09-05)
+- **배경**: 키움 IRP 계좌는 개발자 API로 잔고 조회가 불가능(계좌 종류 제한) — 사용자가 직접 종목/수량/매입단가를 입력·관리하는 CRUD 기능이 필요했음. 구현 전 스펙을 코드베이스와 대조 검토해 사용자와 3가지 설계 결정을 확정: ①예수금(cash) 필드는 제외, 종목 평가금액 합산만 적용 ②필터 탭/KPI 카드는 계좌 목록 기반 **동적 생성**으로 리팩터링(확장성 확보) ③"자산 관리" 화면은 별도 라우트가 아닌 **같은 SPA 내 사이드바 뷰 전환**(기존 서버세션 인증가드 재사용).
+- **치명적 모순 발견·회피**: 스펙 원안은 "IRP 시세를 키움 API로 일괄 조회"였으나, 이 배포는 키움 ka10001 REST 시세가 이미 500 에러로 막혀있음(PR #8 세션에서 확인된 기존 제약, `brokers.py` 주석 참조). 대신 기존 `brokers.get_quote()`(토스 prices/candles 기반, 계좌 무관하게 임의 심볼 조회 가능)를 재사용 — 실 라이브 테스트로 국내 6자리 코드(069500 KODEX 200)도 토스 시세로 정상 조회됨을 확인.
+- **신규 `manual_holdings` 테이블** (schema.sql): id/account_name/ticker/name/quantity/buy_price/currency. 현재가는 별도 저장 없이 기존 `quotes`(symbol PK) 캐시를 공유 — `snapshots.fetch_and_update_quotes()`가 브로커 보유종목과 수동종목 ticker를 같은 배치로 토스 시세 조회·UPSERT. 매칭 실패 시(신규 등록 직후 등) `quotes` 이전 캐시가 그대로 유지되고, 캐시가 아예 없으면 매입단가를 잠정 현재가로 사용(0평가 방지).
+- **신규 `app/manual.py`**: CRUD(list/create/update/delete) + `list_holdings_for_portfolio()`(collect_portfolio()와 동일한 item 형태로 변환, `broker='manual'`, `account=계좌명`). 서버측 검증(ticker 필수, 수량/단가 음수 거부, 400 반환).
+- **`app/snapshots.py` 통합**: `collect_all_items()` 신설(브로커+수동 병합), `collect_day_snapshot()`/`fetch_and_update_quotes()`가 이를 사용 → **기존 외부 크론(`d97014bf74ee`, 매일 15:30 KST `python -m snapshots`)이 코드 수정 없이 그대로 IRP 자산을 포함해 집계**(신규 스케줄러 불필요). 부수 효과: `run_collect()`가 `brokers.collect_portfolio()`를 3회→1회 호출로 줄여 API 부담 경감.
+- **`app/main.py`**: `/api/manual-holdings` GET/POST/PUT/DELETE 신규. `/api/portfolio`가 브로커 실시간 보유 + 수동자산을 병합해 반환(DB `holdings` 테이블 upsert는 기존처럼 키움/토스만 대상, 수동자산은 `manual_holdings`가 원본이라 이중 저장 안 함).
+- **프론트 `index.html`**:
+  - **동적 계좌 그룹 분류** `classifyGroup()`/`computeGroups()` 신설 — 키움/토스국내/토스해외는 기존 분류 유지, `manual` 브로커는 `account` 필드 기준 자동 그룹화. 필터 탭([전체]+그룹들)과 KPI 하단 카드가 이 함수로 **완전히 동적 생성** — IRP뿐 아니라 향후 다른 수동계좌가 추가돼도 프론트 코드 수정 불필요(하드코딩 4버튼 방식에서 전환). 종목별 비중 도넛은 기존 `computeItemPieData()`가 이미 범용적이라 변경 없이 그대로 연동됨.
+  - **좌측 사이드바** 신설: 기본 220px, 좁은 화면(<768px) 기본 64px 아이콘 레일, 토글 버튼(☰)으로 전환. "대시보드 홈"(`viewHome`)/"자산 관리 / 추가"(`viewManage`) 2개 메뉴, 클릭 시 같은 페이지 내에서 `.view.active` 클래스로 섹션 전환(별도 라우트·인증 로직 없음). 전체 레이아웃을 `body{max-width:960px}` 단일 컬럼 → `.app-shell`(sidebar+main-col) flex 2컬럼으로 재구성.
+  - **자산 관리 CRUD UI**: 계좌명/종목코드/종목명/수량/매입단가/통화 입력 폼 + 목록 테이블(수정/삭제 버튼), 저장 시 `/api/manual-holdings` 호출 후 목록 재조회. "평가액(추정)"은 매입단가 기준 잠정값(실 현재가는 새로고침 후 반영).
+- **검증(실 라이브 API·로컬 통합)**: IRP 종목(069500 KODEX 200, 수량10, 매입단가30000) 생성 → `fetch_and_update_quotes()` 실행 → 토스 시세로 현재가 105,720원(+2.04%) 정상 반영 확인 → `/api/portfolio` 병합 결과 13종목(키움3+토스9+IRP1) 확인 → `run_collect()` 실행 → `day_snapshots`에 IRP 포함 총자산 66,476,097원 저장 확인. CRUD 4종(생성/조회/수정/삭제), 검증 오류(빈 ticker→400, 음수 수량→400), 미인증 401 모두 확인. `node --check`/`py_compile` 구문 검사 통과.
+- **배포**: db.py·main.py·manual.py·snapshots.py·schema.sql·static/index.html `docker cp /app/app/<path>`(⚠️ 이번 세션에 `/app/<path>`로 잘못 복사했다가 컨테이너 내부에서 재발견·삭제 후 정정 — **컨테이너 코드 경로는 `/app/app/`, `/app/`가 아님**) + `docker restart`. 재기동 후 `docker exec` 내부 `/health` 200, `manual_holdings` 테이블 마이그레이션 확인. 재기동 로그에서 사용자 실브라우저 트래픽(`/api/manual-holdings` 200 등) 확인 — 라이브 정상 서빙 중.
+- **미확인**: 사이드바/CRUD 폼의 실제 브라우저 시각 렌더링(이 환경엔 브라우저 daemon 없음, 사용자 직접 확인 예정 — 특히 모바일 64px 레일 토글 동작).
+
 ## ⏭ 다음 세션 (남은 작업)
-  1. **UI/UX 전면 개편(M1~M6) 전체 완료 — live 화면 최종 사용자 브라우저 확인만 남음** (특히 모바일에서 도넛 겹침 해소 여부)
+  1. **M7 사용자 브라우저 최종 확인 대기** (사이드바 레이아웃, IRP CRUD 폼, 필터/KPI 동적 카드, 모바일 레일 토글)
   2. **나스닥 선물 지수** — 네이버 폴링 API 심볼 미확인, 데이터 소스 추가 조사 필요 (유예)
   3. **AI 브리핑 카드** — 미진행 (유예)
   4. (선택)**네이버 뉴스 수집+변동성 필터링** — 미진행 (미룸)

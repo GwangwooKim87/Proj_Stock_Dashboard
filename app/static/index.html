@@ -8,7 +8,7 @@
 <style>
   :root{ color-scheme: dark;}
   *{ box-sizing:border-box; }
-  body{ font-family: system-ui, sans-serif; background:#0f1115; color:#e8e8e8; margin:0; padding:16px; max-width:960px; margin:0 auto;}
+  body{ font-family: system-ui, sans-serif; background:#0f1115; color:#e8e8e8; margin:0; padding:0;}
   h1{ font-size:20px; margin:8px 0 2px;}
   .muted{ color:#9aa0aa; font-size:13px;}
   .card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:14px; }
@@ -122,6 +122,36 @@
   .login-btn:disabled{ opacity:.7; cursor:default; }
   .login-btn .spinner{ width:14px; height:14px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
   .login-meta{ margin-top:16px; font-size:12px; color:#8b949e; text-align:center; }
+
+  /* ===== M7: 좌측 사이드바 + 뷰 전환 ===== */
+  .app-shell{ display:flex; align-items:stretch; min-height:100vh; }
+  .sidebar{ width:220px; flex:none; background:#141720; border-right:1px solid #2a2e38; padding:18px 12px; position:sticky; top:0; align-self:flex-start; min-height:100vh; transition:width .15s; overflow:hidden; }
+  .sidebar.rail{ width:64px; }
+  .sidebar-brand{ display:flex; align-items:center; gap:8px; margin:0 0 22px; padding:0 6px; white-space:nowrap; }
+  .sidebar-brand .brand-text{ font-size:15px; font-weight:700; color:#e8e8e8; }
+  .sidebar.rail .brand-text, .sidebar.rail .sidebar-item .label{ display:none; }
+  .sidebar-nav{ display:flex; flex-direction:column; gap:4px; }
+  .sidebar-item{ display:flex; align-items:center; gap:10px; padding:10px 10px; border-radius:8px; color:#9aa0aa; cursor:pointer; font-size:14px; white-space:nowrap; overflow:hidden; }
+  .sidebar-item:hover{ background:#1a1d24; color:#e8e8e8; }
+  .sidebar-item.active{ background:#1f6feb2e; color:#7db4ff; }
+  .sidebar-item .icon{ flex:none; width:18px; text-align:center; font-size:16px; }
+  .sidebar-toggle{ margin-top:18px; }
+  .main-col{ flex:1 1 auto; min-width:0; padding:16px; max-width:960px; margin:0 auto; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+  @media (max-width:640px){
+    .main-col{ padding:12px; }
+  }
+
+  /* ===== M7: IRP 등 수동 자산 관리 폼 ===== */
+  .manual-form{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; align-items:end; margin-bottom:18px; }
+  .manual-form label{ display:block; font-size:11px; color:#9aa0aa; margin-bottom:4px; }
+  .manual-form input, .manual-form select{ width:100%; padding:8px 9px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#e6edf3; font-size:13px; box-sizing:border-box; }
+  .manual-form input:focus, .manual-form select:focus{ outline:none; border-color:#4ade80; }
+  .manual-form-actions{ display:flex; gap:8px; }
+  .btn-primary{ padding:9px 14px; background:linear-gradient(180deg,#22c55e,#15803d); color:#fff; border:1px solid rgba(74,222,128,.3); border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn-ghost{ padding:9px 14px; background:transparent; color:#9aa0aa; border:1px solid #2a2e38; border-radius:6px; font-size:13px; cursor:pointer; }
+  .btn-ghost:hover{ color:#e8e8e8; }
 </style>
 </head>
 <body>
@@ -155,6 +185,23 @@
   </div>
 
   <div id="appMain" style="display:none;">
+  <div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 17L9 11L13 15L21 6" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M15 6H21V12" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-text">Stock Dashboard</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-item active" data-view="viewHome"><span class="icon">📊</span><span class="label">대시보드 홈</span></div>
+      <div class="sidebar-item" data-view="viewManage"><span class="icon">➕</span><span class="label">자산 관리 / 추가</span></div>
+    </nav>
+    <button class="icon-btn sidebar-toggle" id="sidebarToggle" title="사이드바 접기/펼치기">☰</button>
+  </aside>
+  <main class="main-col">
+  <div class="view active" id="viewHome">
   <header class="topbar">
     <div class="brand-row">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -208,12 +255,7 @@
   <div class="status-banner" id="status"></div>
 
   <div id="posFilterBtns">
-    <div class="filter-btns-group">
-      <button class="range-btn active" data-filter="all">전체</button>
-      <button class="range-btn" data-filter="kiwoom">키움</button>
-      <button class="range-btn" data-filter="toss-dom">토스 국내</button>
-      <button class="range-btn" data-filter="toss-foreign">토스 해외</button>
-    </div>
+    <div class="filter-btns-group" id="filterBtnsGroup"></div>
     <div class="filter-summary" id="filterSummary"></div>
   </div>
   <div class="pos-wrap">
@@ -223,6 +265,41 @@
     </table>
   </div>
   <div class="pos-cards" id="posCards"></div>
+  </div>
+  <!-- /viewHome -->
+
+  <div class="view" id="viewManage">
+    <div class="card" style="margin:16px 0;">
+      <b>자산 관리 / 추가</b>
+      <p class="muted" style="margin:6px 0 16px;">API로 잔고를 조회할 수 없는 계좌(예: 키움 IRP)의 보유 종목을 직접 등록·수정합니다. 저장 후 홈 화면에서 새로고침을 누르면 최신 시세가 반영됩니다.</p>
+      <form class="manual-form" id="manualForm">
+        <input type="hidden" id="mfId">
+        <div><label for="mfAccount">계좌명</label><input id="mfAccount" placeholder="키움 IRP" value="키움 IRP"></div>
+        <div><label for="mfTicker">종목코드</label><input id="mfTicker" placeholder="예: 069500"></div>
+        <div><label for="mfName">종목명</label><input id="mfName" placeholder="예: KODEX 200"></div>
+        <div><label for="mfQty">수량</label><input id="mfQty" type="number" step="any" min="0" placeholder="0"></div>
+        <div><label for="mfBuy">매입단가</label><input id="mfBuy" type="number" step="any" min="0" placeholder="0"></div>
+        <div><label for="mfCcy">통화</label>
+          <select id="mfCcy"><option value="KRW">KRW</option><option value="USD">USD</option></select>
+        </div>
+        <div class="manual-form-actions">
+          <button type="submit" class="btn-primary" id="mfSubmit">추가</button>
+          <button type="button" class="btn-ghost" id="mfCancel">취소</button>
+        </div>
+      </form>
+      <div class="muted" id="manualStatus" style="font-size:12px;margin:-8px 0 14px;display:none;"></div>
+      <div class="pos-wrap">
+        <table class="pos" id="manualTable">
+          <thead><tr><th>계좌명</th><th>종목</th><th class="num">수량</th><th class="num">매입단가</th><th>통화</th><th class="num">평가액(추정)</th><th></th></tr></thead>
+          <tbody id="manualBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <!-- /viewManage -->
+  </main>
+  </div>
+  <!-- /app-shell -->
   </div>
 
   <script>
@@ -242,6 +319,25 @@
     // 부호(+/-) 표시가 필요한 등락률용 - -0.00% 방지 로직 공유
     const fmtPctSigned=(r)=>{ if(r===void 0||r===null)return null; let s=Number(r).toFixed(2); if(s==='-0.00') s='0.00'; return (parseFloat(s)>0?'+':'')+s+'%'; };
     const BROKER_NAMES={ kiwoom:'키움증권', toss:'토스증권' };
+    // ===== M7: 계좌 그룹 분류 (확장성) - 키움/토스는 기존 분류 유지, manual(IRP 등)은 계좌명 기준 자동 그룹화 =====
+    function classifyGroup(h){
+      if(h.broker==='kiwoom') return {key:'kiwoom', label:'키움 ISA', order:0};
+      if(h.broker==='toss') return h.currency==='USD'
+        ? {key:'toss-foreign', label:'토스 해외', order:2}
+        : {key:'toss-dom', label:'토스 국내', order:1};
+      if(h.broker==='manual') return {key:'manual:'+(h.account||'기타'), label:h.account||'수동 자산', order:10};
+      return {key:h.broker||'기타', label:h.broker||'기타', order:99};
+    }
+    function brokerLabel(h){ return h.broker==='manual' ? (h.account||'IRP') : (BROKER_NAMES[h.broker]||h.broker); }
+    function computeGroups(items){
+      const map=new Map();
+      items.forEach(h=>{
+        const g=classifyGroup(h);
+        if(!map.has(g.key)) map.set(g.key, {key:g.key, label:g.label, order:g.order, items:[]});
+        map.get(g.key).items.push(h);
+      });
+      return Array.from(map.values()).sort((a,b)=> a.order-b.order || a.label.localeCompare(b.label,'ko'));
+    }
     // M6-3: 주요 증시 지수 티커 (코스피/코스닥/나스닥/S&P500/다우존스/필라델피아반도체). 상승(+)빨강/하락(-)파랑.
     function renderMarketTicker(indices){
       const el=$('marketTicker');
@@ -464,13 +560,24 @@
     // ===== M5 보유 종목 테이블: 계좌별 필터 + 렌더링 =====
     let posFilter='all';
     function filterItemsByPosFilter(all){
-      return all.filter(h=>{
-        if(posFilter==='all') return true;
-        if(posFilter==='kiwoom') return h.broker==='kiwoom';
-        if(posFilter==='toss-dom') return h.broker==='toss' && h.currency!=='USD';
-        if(posFilter==='toss-foreign') return h.broker==='toss' && h.currency==='USD';
-        return true;
-      });
+      if(posFilter==='all') return all;
+      return all.filter(h=>classifyGroup(h).key===posFilter);
+    }
+    // 보유 데이터에 존재하는 계좌 그룹 기준으로 필터 탭을 동적 생성 (M7: IRP 등 계좌가 늘어도 코드 수정 불필요)
+    function renderFilterTabs(items){
+      const groups = computeGroups(items);
+      const wrap = $('filterBtnsGroup');
+      if(!wrap) return;
+      const tabs = [{key:'all', label:'전체'}].concat(groups.map(g=>({key:g.key, label:g.label})));
+      wrap.innerHTML = tabs.map(t=>
+        '<button class="range-btn'+(posFilter===t.key?' active':'')+'" data-filter="'+t.key+'">'+t.label+'</button>'
+      ).join('');
+      wrap.querySelectorAll('.range-btn').forEach(b=>b.addEventListener('click', ()=>{
+        wrap.querySelectorAll('.range-btn').forEach(x=>x.classList.toggle('active', x===b));
+        posFilter = b.dataset.filter;
+        renderPosTable();
+        updateItemDonutForFilter();
+      }));
     }
     function renderPosTable(){
       const items = filterItemsByPosFilter(window._posItems || []);
@@ -500,7 +607,7 @@
         const hasDaily = q && q.prev_close_price; // 전일종가 없으면(백필/미매칭) 등락 표시 안 함
         const dailyCls = !hasDaily ? '' : (q.change_rate>0?'green':q.change_rate<0?'red':'');
         const dailyTxt = !hasDaily ? '-' : fmtPct(q.change_rate);
-        return '<tr><td>'+(BROKER_NAMES[h.broker]||h.broker)+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
+        return '<tr><td>'+brokerLabel(h)+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
         '<td class="num">'+fmt(h.qty)+'</td><td class="num">'+fmtCcy(h.cur_price,h.currency)+'</td>'+
         '<td class="num">'+fmtCcy(h.avg_price,h.currency)+'</td><td>'+h.currency+'</td>'+
         '<td class="num '+pnlCls+'">'+fmtCcy(h.p_pnl,h.currency)+'</td>'+
@@ -604,13 +711,6 @@
     }
     window.addEventListener('resize', ()=> window._pieData && renderItemDonut());
 
-    document.querySelectorAll('#posFilterBtns .range-btn').forEach(b=>b.addEventListener('click',()=>{
-      document.querySelectorAll('#posFilterBtns .range-btn').forEach(x=>x.classList.toggle('active', x===b));
-      posFilter = b.dataset.filter;
-      renderPosTable();
-      updateItemDonutForFilter();
-    }));
-
     // ===== 대시보드 데이터 로딩 (로그인 후/갱신 시 재호출) =====
     // force=true: 수동 새로고침 - 환율/증시 지수 TTL 캐시 무시하고 강제 갱신(같이 업데이트)
     function loadDashboardData(force){
@@ -630,22 +730,13 @@
       const FX_RATE = (fxd && fxd.rate) ? Number(fxd.rate) : 0;
       const items=d.holdings||[];
       let totalKrw=0, totalUsd=0;
-      let kiwoomKrw=0, kiwoomCount=0;
-      let tossDomKrw=0, tossDomCount=0;
-      let tossForeignUsd=0, tossForeignKrwEq=0, tossForeignCount=0;
       let pnlKrw=0, investKrw=0;
       items.forEach(h=>{
         const mv=h.qty*h.cur_price;
-        const mvKrw = h.currency==='USD' ? mv*FX_RATE : mv;
         const investNative = (h.avg_price||0)*h.qty;
         const investKrwItem = h.currency==='USD' ? investNative*FX_RATE : investNative;
         const pnlKrwItem = h.currency==='USD' ? (h.p_pnl||0)*FX_RATE : (h.p_pnl||0);
         if(h.currency==='USD') totalUsd+=mv; else totalKrw+=mv;
-        if(h.broker==='kiwoom'){ kiwoomKrw+=mvKrw; kiwoomCount++; }
-        else if(h.broker==='toss'){
-          if(h.currency==='USD'){ tossForeignCount++; tossForeignUsd+=mv; tossForeignKrwEq+=mvKrw; }
-          else { tossDomCount++; tossDomKrw+=mv; }
-        }
         pnlKrw += pnlKrwItem;
         investKrw += investKrwItem;
       });
@@ -671,13 +762,16 @@
         '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value">'+fmt(pnlKrw,'원')+'</div>'+
           '<div class="kpi-sub '+pnlRateCls+'">'+(pnlRatePct==null?'-':fmtPctSigned(pnlRatePct))+'</div></div>';
 
-      $('summaryBottom').innerHTML=
-        '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
-          '<div class="kpi-sub">'+kiwoomCount+'종목 보유</div></div>'+
-        '<div class="kpi-card"><span class="kpi-label">토스 국내</span><div class="kpi-value">'+fmt(tossDomKrw,'원')+'</div>'+
-          '<div class="kpi-sub">'+tossDomCount+'종목 보유</div></div>'+
-        '<div class="kpi-card"><span class="kpi-label">토스 해외</span><div class="kpi-value">'+fmt(tossForeignUsd,'$',true)+'</div>'+
-          '<div class="kpi-sub">≈ '+fmt(tossForeignKrwEq,'원')+' · '+tossForeignCount+'종목</div></div>';
+      // 계좌 그룹별 카드: 보유 데이터에 존재하는 그룹(키움/토스국내/토스해외/IRP 등)에서 자동 생성 (M7)
+      $('summaryBottom').innerHTML = computeGroups(items).map(g=>{
+        const allUsd = g.items.length>0 && g.items.every(h=>h.currency==='USD');
+        let valKrw=0, valNative=0;
+        g.items.forEach(h=>{ const mv=h.qty*h.cur_price; valNative+=mv; valKrw += h.currency==='USD'?mv*FX_RATE:mv; });
+        const valueHtml = allUsd ? fmt(valNative,'$',true) : fmt(valKrw,'원');
+        const subHtml = allUsd ? ('≈ '+fmt(valKrw,'원')+' · '+g.items.length+'종목') : (g.items.length+'종목 보유');
+        return '<div class="kpi-card"><span class="kpi-label">'+g.label+'</span><div class="kpi-value">'+valueHtml+'</div>'+
+          '<div class="kpi-sub">'+subHtml+'</div></div>';
+      }).join('');
 
       // FX: USD→KRW 실시간 환율 ( /api/fx/rate : 백엔드 TTL 캐시·폴백 포함)
             const FX = FX_RATE;
@@ -706,6 +800,7 @@
       window._posItems = items;
       window._quotesMap = quotesMap;
       window._FX_RATE = FX_RATE;
+      renderFilterTabs(items);
       renderPosTable();
       // 도넛 1: 종목별 평가금액 비중 - 계좌 필터 연동 렌더링 (M6-1). window._posItems 설정 이후에 호출해야 함(최초 접속 시 순서 버그).
       updateItemDonutForFilter();
@@ -753,6 +848,85 @@
         wrap.scrollLeft = startScroll - (e.pageX-startX);
       });
     })();
+
+    // ===== M7: 사이드바 뷰 전환 + 접이식 레일 =====
+    (function(){
+      const sidebar=$('sidebar'), toggle=$('sidebarToggle');
+      if(window.innerWidth < 768 && sidebar) sidebar.classList.add('rail'); // 좁은 화면 기본 아이콘 레일
+      if(toggle) toggle.addEventListener('click', ()=> sidebar.classList.toggle('rail'));
+      document.querySelectorAll('.sidebar-item').forEach(el=>{
+        el.addEventListener('click', ()=>{
+          document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.toggle('active', x===el));
+          document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id===el.dataset.view));
+          if(el.dataset.view==='viewManage') loadManualHoldings();
+        });
+      });
+    })();
+
+    // ===== M7: IRP 등 수동 자산 관리 CRUD =====
+    async function loadManualHoldings(){
+      try{
+        const res = await fetch('/api/manual-holdings');
+        const data = await res.json();
+        renderManualTable(data.holdings||[]);
+      }catch(e){
+        $('manualBody').innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px;">목록을 불러오지 못했습니다</td></tr>';
+      }
+    }
+    function renderManualTable(rows){
+      window._manualRows = rows;
+      $('manualBody').innerHTML = rows.map(h=>{
+        const evalAmt = (h.quantity||0) * (h.buy_price||0); // 시세 미조회 상태 대비: 매입단가 기준 잠정 평가액
+        return '<tr><td>'+h.account_name+'</td><td>'+(h.name||h.ticker)+'<span class="tag">'+h.ticker+'</span></td>'+
+        '<td class="num">'+fmt(h.quantity)+'</td><td class="num">'+fmtCcy(h.buy_price,h.currency)+'</td><td>'+h.currency+'</td>'+
+        '<td class="num">'+fmtCcy(evalAmt,h.currency)+'</td>'+
+        '<td class="num"><button type="button" class="icon-btn" data-edit="'+h.id+'" title="수정" style="margin-right:4px;">✎</button>'+
+        '<button type="button" class="icon-btn" data-del="'+h.id+'" title="삭제">🗑</button></td></tr>';
+      }).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px;">등록된 수동 자산이 없습니다</td></tr>';
+      $('manualBody').querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click', ()=>fillManualForm(b.dataset.edit)));
+      $('manualBody').querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', ()=>deleteManualHolding(b.dataset.del)));
+    }
+    function fillManualForm(id){
+      const h=(window._manualRows||[]).find(r=>String(r.id)===String(id));
+      if(!h) return;
+      $('mfId').value=h.id; $('mfAccount').value=h.account_name; $('mfTicker').value=h.ticker;
+      $('mfName').value=h.name||''; $('mfQty').value=h.quantity; $('mfBuy').value=h.buy_price; $('mfCcy').value=h.currency;
+      $('mfSubmit').textContent='수정 저장';
+    }
+    function resetManualForm(){
+      $('mfId').value=''; $('manualForm').reset(); $('mfAccount').value='키움 IRP'; $('mfCcy').value='KRW';
+      $('mfSubmit').textContent='추가';
+    }
+    async function deleteManualHolding(id){
+      if(!confirm('삭제하시겠습니까?')) return;
+      await fetch('/api/manual-holdings/'+id, {method:'DELETE'});
+      loadManualHoldings();
+    }
+    function showManualStatus(msg){
+      const el=$('manualStatus');
+      el.textContent=msg; el.style.display='block';
+      setTimeout(()=>{ el.style.display='none'; }, 3000);
+    }
+    if($('manualForm')) $('manualForm').addEventListener('submit', async e=>{
+      e.preventDefault();
+      const id=$('mfId').value;
+      const body={
+        account_name: $('mfAccount').value.trim()||'키움 IRP',
+        ticker: $('mfTicker').value.trim(),
+        name: $('mfName').value.trim(),
+        quantity: parseFloat($('mfQty').value||'0'),
+        buy_price: parseFloat($('mfBuy').value||'0'),
+        currency: $('mfCcy').value,
+      };
+      if(!body.ticker){ showManualStatus('종목코드를 입력하세요.'); return; }
+      const url = id ? '/api/manual-holdings/'+id : '/api/manual-holdings';
+      const method = id ? 'PUT' : 'POST';
+      const res = await fetch(url,{method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      if(!res.ok){ const err=await res.json().catch(()=>({})); showManualStatus('저장 실패: '+(err.detail||res.status)); return; }
+      resetManualForm();
+      loadManualHoldings();
+    });
+    if($('mfCancel')) $('mfCancel').addEventListener('click', resetManualForm);
   </script>
 </body>
 </html>

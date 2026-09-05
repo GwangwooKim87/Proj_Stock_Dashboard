@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
-from . import db, brokers, snapshots, fx, auth, config, market
+from . import db, brokers, snapshots, fx, auth, config, market, manual
 
 
 app = FastAPI(title="Stock Dashboard", version="0.1.0")
@@ -14,6 +14,15 @@ class LoginBody(BaseModel):
     username: str = ""
     password: str = ""
     remember: bool = False
+
+
+class ManualHoldingBody(BaseModel):
+    account_name: str = "키움 IRP"
+    ticker: str
+    name: str = ""
+    quantity: float = 0
+    buy_price: float = 0
+    currency: str = "KRW"
 
 
 @app.on_event("startup")
@@ -76,7 +85,7 @@ def list_accounts():
 @app.get("/api/portfolio")
 def portfolio():
     items = brokers.collect_portfolio()
-    # DB 적재: 키움/토스 계좌별 holdings upsert
+    # DB 적재: 키움/토스 계좌별 holdings upsert (수동자산은 manual_holdings 가 이미 원본)
     ki = [x for x in items if x["broker"] == "kiwoom"]
     to = [x for x in items if x["broker"] == "toss"]
     saved = []
@@ -86,7 +95,38 @@ def portfolio():
         seq = brokers._toss_seq()
         if seq:
             saved.append(db.save_holdings(seq, "toss", to))
-    return JSONResponse({"holdings": items, "count": len(items), "saved": len(saved)})
+    all_items = items + manual.list_holdings_for_portfolio()
+    return JSONResponse({"holdings": all_items, "count": len(all_items), "saved": len(saved)})
+
+
+@app.get("/api/manual-holdings")
+def manual_holdings_list():
+    """수동 관리 자산(IRP 등) 목록. 자산 관리 화면의 CRUD 테이블용."""
+    return JSONResponse({"holdings": manual.list_holdings()})
+
+
+@app.post("/api/manual-holdings")
+def manual_holdings_create(body: ManualHoldingBody):
+    try:
+        holding_id = manual.create_holding(body.dict())
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "id": holding_id})
+
+
+@app.put("/api/manual-holdings/{holding_id}")
+def manual_holdings_update(holding_id: int, body: ManualHoldingBody):
+    try:
+        manual.update_holding(holding_id, body.dict())
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/manual-holdings/{holding_id}")
+def manual_holdings_delete(holding_id: int):
+    manual.delete_holding(holding_id)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/portfolio/history")

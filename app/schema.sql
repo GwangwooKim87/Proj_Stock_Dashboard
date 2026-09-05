@@ -93,3 +93,18 @@ CREATE TABLE IF NOT EXISTS fx_rates (
     fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_fx_time ON fx_rates(fetched_at);
+
+-- 8. 수동 관리 자산 (키움 IRP 등 API로 잔고 조회 불가능한 계좌의 종목을 직접 입력)
+--   현재가는 별도 보관하지 않고 quotes 캐시(brokers.get_quote 경유)를 공유한다.
+CREATE TABLE IF NOT EXISTS manual_holdings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_name TEXT NOT NULL DEFAULT '키움 IRP',  -- 계좌 구분 (향후 다른 수동계좌도 이 필드로 확장)
+    ticker       TEXT NOT NULL,                     -- 종목코드(국내 6자리) 또는 해외 티커
+    name         TEXT,
+    quantity     REAL NOT NULL DEFAULT 0,
+    buy_price    REAL NOT NULL DEFAULT 0,            -- 평균 매입단가 (종목 통화)
+    currency     TEXT NOT NULL DEFAULT 'KRW',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_manual_account ON manual_holdings(account_name);
