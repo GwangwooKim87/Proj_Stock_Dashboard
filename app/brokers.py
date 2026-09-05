@@ -403,7 +403,8 @@ def collect_portfolio():
             "cur_price": _to_num(it.get("lastPrice")),
             "currency": (it.get("currency") or "USD"), "broker": "toss",
             "p_pnl": _to_num(pl.get("amount")),
-            "p_pnl_rate": _to_num(pl.get("rate")),
+            # 토스 API의 profitLoss.rate는 비율(-0.28 = -28%)로 내려옴 - 키움(prft_rt)은 이미 %단위라 통일 위해 *100
+            "p_pnl_rate": _to_num(pl.get("rate")) * 100,
             "prev_close": _num_or_none(it.get("previousClosePrice") or it.get("prevClosePrice")),
             "change_rate": _num_or_none(it.get("changeRate") or it.get("changePercent")
                                           or it.get("dailyChangeRate")),

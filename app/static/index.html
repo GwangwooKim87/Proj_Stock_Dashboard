@@ -24,12 +24,14 @@
   .kpi-card .kpi-value.red, .kpi-card .kpi-sub.red{ color:#ff5c5c; }
   .kpi-card .kpi-value.green, .kpi-card .kpi-sub.green{ color:#4ade80; }
   .kpi-card .kpi-value.blue, .kpi-card .kpi-sub.blue{ color:#58a6ff; }
+  .pos-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .pos{ width:100%; font-size:13px; border-collapse:collapse;}
-  .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f;}
+  .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f; white-space:nowrap;}
   .pos th{ color:#9aa0aa; font-weight:600;}
   .pos .num{ text-align:right; font-variant-numeric:tabular-nums;}
+  .pos tbody tr:hover{ background:#21262d; }
   .red{ color:#ff5c5c;} .green{ color:#4ade80;} .blue{ color:#58a6ff;}
-  .tag{ display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#252a35; color:#9aa0aa; margin-left:6px;}
+  .tag{ display:inline-block; font-size:11px; padding:2px 7px; border-radius:6px; background:#2d3341; color:#c9d1d9; margin-left:6px; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; }
   .range-btn{ background:#252a35; border:1px solid #2a2e38; color:#9aa0aa; border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s;}
   .range-btn:hover{ color:#e8e8e8;}
   .range-btn.active{ background:#1f6feb33; border-color:#1f6feb; color:#7db4ff;}
@@ -162,15 +164,28 @@
   </div>
   <div class="status-banner" id="status"></div>
 
-  <table class="pos" id="pos">
-    <thead><tr><th>브로커</th><th>종목</th><th>수량</th><th>현재가</th><th>평단가</th><th>통화</th><th>평가손익</th><th>수익률</th></tr></thead>
-    <tbody id="posbody"></tbody>
-  </table>
+  <div id="posFilterBtns" style="margin:16px 0 8px;">
+    <button class="range-btn active" data-filter="all">전체</button>
+    <button class="range-btn" data-filter="kiwoom">키움</button>
+    <button class="range-btn" data-filter="toss-dom">토스 국내</button>
+    <button class="range-btn" data-filter="toss-foreign">토스 해외</button>
+  </div>
+  <div class="pos-wrap">
+    <table class="pos" id="pos">
+      <thead><tr><th>증권사</th><th>종목</th><th class="num">수량</th><th class="num">현재가</th><th class="num">평단가</th><th>통화</th><th class="num">평가손익</th><th class="num">수익률</th><th class="num">당일등락</th></tr></thead>
+      <tbody id="posbody"></tbody>
+    </table>
+  </div>
   </div>
 
   <script>
     const $=id=>document.getElementById(id);
     const fmt=(n,cur='',prefix=false)=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); if(!cur) return s; return prefix ? cur+s : s+' '+cur; };
+    // M5: 통화별 포맷 - KRW 정수(콤마), USD 소수 둘째 자리 고정
+    const fmtCcy=(n,ccy)=>{ if(n===void 0||n===null)return '-'; const opts= ccy==='USD' ? {minimumFractionDigits:2,maximumFractionDigits:2} : {maximumFractionDigits:0}; return Number(n).toLocaleString('ko-KR',opts); };
+    // M5: -0.00% 마이너스 부호 출력 방지
+    const fmtPct=(r)=>{ if(r===void 0||r===null)return '-'; let s=Number(r).toFixed(2); if(s==='-0.00') s='0.00'; return s+'%'; };
+    const BROKER_NAMES={ kiwoom:'키움증권', toss:'토스증권' };
 
     // ===== M1 인증 상태 처리 (M1-2: 서버 세션 연동) =====
     const AUTH_COOKIE='sdb_session';
@@ -306,6 +321,39 @@
     window.addEventListener('resize', ()=> trendChart && trendChart.resize());
     document.querySelectorAll('#rangeBtns .range-btn').forEach(b=>b.addEventListener('click',()=>loadTrend(b.dataset.range)));
 
+    // ===== M5 보유 종목 테이블: 계좌별 필터 + 렌더링 =====
+    let posFilter='all';
+    function renderPosTable(){
+      const all = window._posItems || [];
+      const qmap = window._quotesMap || {};
+      const items = all.filter(h=>{
+        if(posFilter==='all') return true;
+        if(posFilter==='kiwoom') return h.broker==='kiwoom';
+        if(posFilter==='toss-dom') return h.broker==='toss' && h.currency!=='USD';
+        if(posFilter==='toss-foreign') return h.broker==='toss' && h.currency==='USD';
+        return true;
+      });
+      $('posbody').innerHTML=items.map(h=>{
+        const pnlCls = h.p_pnl > 0 ? 'green' : (h.p_pnl < 0 ? 'red' : '');
+        const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
+        const q = qmap[h.symbol];
+        const hasDaily = q && q.prev_close_price; // 전일종가 없으면(백필/미매칭) 등락 표시 안 함
+        const dailyCls = !hasDaily ? '' : (q.change_rate>0?'green':q.change_rate<0?'red':'');
+        const dailyTxt = !hasDaily ? '-' : fmtPct(q.change_rate);
+        return '<tr><td>'+(BROKER_NAMES[h.broker]||h.broker)+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
+        '<td class="num">'+fmt(h.qty)+'</td><td class="num">'+fmtCcy(h.cur_price,h.currency)+'</td>'+
+        '<td class="num">'+fmtCcy(h.avg_price,h.currency)+'</td><td>'+h.currency+'</td>'+
+        '<td class="num '+pnlCls+'">'+fmtCcy(h.p_pnl,h.currency)+'</td>'+
+        '<td class="num '+rateCls+'">'+fmtPct(h.p_pnl_rate)+'</td>'+
+        '<td class="num '+dailyCls+'">'+dailyTxt+'</td></tr>';
+      }).join('') || '<tr><td colspan="9" class="muted" style="text-align:center;padding:16px;">해당 조건의 보유 종목이 없습니다</td></tr>';
+    }
+    document.querySelectorAll('#posFilterBtns .range-btn').forEach(b=>b.addEventListener('click',()=>{
+      document.querySelectorAll('#posFilterBtns .range-btn').forEach(x=>x.classList.toggle('active', x===b));
+      posFilter = b.dataset.filter;
+      renderPosTable();
+    }));
+
     // ===== 대시보드 데이터 로딩 (로그인 후/갱신 시 재호출) =====
     function loadDashboardData(){
       loadTrend('7d');
@@ -313,8 +361,11 @@
     Promise.all([
       fetch('/api/portfolio').then(r=>r.json()),
       fetch('/api/fx/rate').then(r=>r.json()).catch(()=>({rate:null})),
-      fetch('/api/portfolio/history?range=7d').then(r=>r.json()).catch(()=>null)
-    ]).then(([d, fxd, hist])=>{
+      fetch('/api/portfolio/history?range=7d').then(r=>r.json()).catch(()=>null),
+      fetch('/api/quotes/summary').then(r=>r.json()).catch(()=>({quotes:[]}))
+    ]).then(([d, fxd, hist, qs])=>{
+      const quotesMap={};
+      (qs && qs.quotes || []).forEach(q=>{ quotesMap[q.symbol]=q; });
       const FX_RATE = (fxd && fxd.rate) ? Number(fxd.rate) : 0;
       const items=d.holdings||[];
       let totalKrw=0, totalUsd=0;
@@ -438,14 +489,9 @@
                 '</div>';
             }
 
-      $('posbody').innerHTML=items.map(h=>{
-        const pnlCls = h.p_pnl > 0 ? 'green' : (h.p_pnl < 0 ? 'red' : '');
-        const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
-        return '<tr><td>'+h.broker+'</td><td>'+h.name+'<span class="tag">'+h.symbol+'</span></td>'+
-        '<td class="num">'+fmt(h.qty)+'</td><td class="num">'+fmt(h.cur_price)+'</td>'+
-        '<td class="num">'+fmt(h.avg_price)+'</td><td>'+h.currency+'</td>'+
-        '<td class="num '+pnlCls+'">'+fmt(h.p_pnl)+'</td>'+
-        '<td class="num '+rateCls+'">'+(h.p_pnl_rate!=null?h.p_pnl_rate.toFixed(2)+'%':'-')+'</td></tr>';}).join('');
+      window._posItems = items;
+      window._quotesMap = quotesMap;
+      renderPosTable();
       $('status').classList.remove('show');
       $('fxBadge').innerHTML = FX_RATE ? '1 USD = <b>'+fmt(Math.round(FX_RATE))+'</b> KRW' : 'FX 조회 실패';
       $('lastUpdated').textContent = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
