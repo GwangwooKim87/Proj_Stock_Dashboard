@@ -330,8 +330,16 @@
           const v = data.total_values[i];
           const r = data.profit_rates?.[i];
           const d = data.dates[i];
+          // 일일 크론 스냅샷 시계열이므로, 누적 수익률과 별개로 "전일 스냅샷 대비" 일 수익도 표시
+          const prev = i>0 ? data.total_values[i-1] : null;
+          const dailyAmt = (prev!=null && prev) ? v-prev : null;
+          const dailyPct = (prev!=null && prev) ? dailyAmt/prev*100 : null;
+          const dailyCls = dailyAmt==null ? '#9aa0aa' : (dailyAmt>0?'#ff5c5c':dailyAmt<0?'#58a6ff':'#9aa0aa');
+          const dailyTxt = dailyAmt==null ? '데이터 없음 (첫 스냅샷)'
+            : (dailyAmt>0?'▲ ':dailyAmt<0?'▼ ':'')+fmt(Math.abs(dailyAmt),'원')+' ('+fmtPctSigned(dailyPct)+')';
           return '<b>'+d+'</b><br/>총평가액: '+fmt(v,'원')+
-                 '<br/>변동률: '+(r!=null? Number(r).toFixed(2)+'%' : '-');
+                 '<br/>일 수익: <span style="color:'+dailyCls+'">'+dailyTxt+'</span>'+
+                 '<br/>누적 수익률: '+(r!=null? fmtPctSigned(r) : '-');
         }
       },
       grid:{ left:'12%', right:'5%', top:'12%', bottom:'12%' },
