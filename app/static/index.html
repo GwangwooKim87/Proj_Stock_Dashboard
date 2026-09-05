@@ -11,18 +11,20 @@
   body{ font-family: system-ui, sans-serif; background:#0f1115; color:#e8e8e8; margin:0; padding:16px; max-width:960px; margin:0 auto;}
   h1{ font-size:20px; margin:8px 0 2px;}
   .muted{ color:#9aa0aa; font-size:13px;}
-  .cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin:16px 0;}
   .card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:14px; }
   .card b{ font-size:15px; display:block; margin-bottom:4px;}
-  .sum{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:16px 0;}
+  .sum{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:16px 0;}
   .sum .card b{ font-size:20px; }
+  .kpi-card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:16px 18px; }
+  .kpi-card .kpi-label{ display:block; color:#9aa0aa; font-size:12px; margin-bottom:6px; }
+  .kpi-card .kpi-value{ font-size:22px; font-weight:700; color:#e8e8e8; font-variant-numeric:tabular-nums; }
+  .kpi-card .kpi-sub{ margin-top:6px; font-size:12px; color:#9aa0aa; font-variant-numeric:tabular-nums; }
   .pos{ width:100%; font-size:13px; border-collapse:collapse;}
   .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f;}
   .pos th{ color:#9aa0aa; font-weight:600;}
   .pos .num{ text-align:right; font-variant-numeric:tabular-nums;}
   .red{ color:#ff5c5c;} .green{ color:#4ade80;}
   .tag{ display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#252a35; color:#9aa0aa; margin-left:6px;}
-  .st{margin:4px 0;}
   .range-btn{ background:#252a35; border:1px solid #2a2e38; color:#9aa0aa; border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s;}
   .range-btn:hover{ color:#e8e8e8;}
   .range-btn.active{ background:#1f6feb33; border-color:#1f6feb; color:#7db4ff;}
@@ -147,7 +149,6 @@
     <div class="card"><b>종목별 평가금액 비중</b><div id="donutItem" style="height:300px;"></div></div>
     <div class="card"><b>원화 vs 외화 비중</b><div id="donutCcy" style="height:300px;"></div></div>
   </div>
-  <div class="cards" id="accts"></div>
   <div class="status-banner" id="status"></div>
 
   <table class="pos" id="pos">
@@ -273,26 +274,53 @@
     function loadDashboardData(){
       loadTrend('7d');
 
-    fetch('/api/accounts').then(r=>r.json()).then(d=>{
-      const el=$('accts');
-      el.innerHTML=(d.accounts||[]).map(a=>'<div class="card"><b>'+a.label+'</b><div class="st"><span class="muted">계좌번호: </span>'+a.account_no+'</div><div class="tag">통화 '+a.currency_base+' · '+a.broker+'</div></div>').join('') || '<div class="card muted">계좌 없음</div>';
-    }).catch(e=>{ $('status').textContent='계좌 정보 로드 실패: '+e; $('status').classList.add('show'); });
-
     Promise.all([
       fetch('/api/portfolio').then(r=>r.json()),
-      fetch('/api/fx/rate').then(r=>r.json()).catch(()=>({rate:null}))
-    ]).then(([d, fxd])=>{
+      fetch('/api/fx/rate').then(r=>r.json()).catch(()=>({rate:null})),
+      fetch('/api/portfolio/history?range=7d').then(r=>r.json()).catch(()=>null)
+    ]).then(([d, fxd, hist])=>{
       const FX_RATE = (fxd && fxd.rate) ? Number(fxd.rate) : 0;
       const items=d.holdings||[];
       let totalKrw=0, totalUsd=0;
+      let kiwoomKrw=0, kiwoomCount=0;
+      let tossUsd=0, tossKrwEq=0, tossCount=0;
+      let pnlKrw=0, investKrw=0;
       items.forEach(h=>{
         const mv=h.qty*h.cur_price;
+        const mvKrw = h.currency==='USD' ? mv*FX_RATE : mv;
+        const investNative = (h.avg_price||0)*h.qty;
+        const investKrwItem = h.currency==='USD' ? investNative*FX_RATE : investNative;
+        const pnlKrwItem = h.currency==='USD' ? (h.p_pnl||0)*FX_RATE : (h.p_pnl||0);
         if(h.currency==='USD') totalUsd+=mv; else totalKrw+=mv;
+        if(h.broker==='kiwoom'){ kiwoomKrw+=mvKrw; kiwoomCount++; }
+        else if(h.broker==='toss'){ tossCount++; tossKrwEq+=mvKrw; if(h.currency==='USD') tossUsd+=mv; }
+        pnlKrw += pnlKrwItem;
+        investKrw += investKrwItem;
       });
+      const totalAll = totalKrw + totalUsd*FX_RATE;
+      const pnlRatePct = investKrw ? (pnlKrw/investKrw*100) : null;
+
+      // 전일 대비: 시계열 마지막 스냅샷(전일 마감) 대비 현재 실시간 총자산 변동
+      let diffAmt=null, diffPct=null;
+      if(hist && Array.isArray(hist.total_values) && hist.total_values.length){
+        const prevTotal = hist.total_values[hist.total_values.length-1];
+        if(prevTotal){ diffAmt = totalAll - prevTotal; diffPct = diffAmt/prevTotal*100; }
+      }
+      const diffArrow = diffAmt==null ? '' : (diffAmt>0?'▲ ':diffAmt<0?'▼ ':'');
+      const diffCls = diffAmt==null ? '' : (diffAmt>0?'green':diffAmt<0?'red':'');
+      const diffTxt = diffAmt==null ? '전일 대비 데이터 없음'
+        : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+(diffPct>=0?'+':'')+diffPct.toFixed(2)+'%)';
+      const pnlCls = pnlKrw>0?'green':(pnlKrw<0?'red':'');
+
       $('summary').innerHTML=
-        '<div class="card"><span class="muted">보유 종목</span><b>'+items.length+'</b></div>'+
-        '<div class="card"><span class="muted">원화 평가</span><b>'+fmt(totalKrw,'원')+'</b></div>'+
-        '<div class="card"><span class="muted">외화 평가</span><b>'+fmt(totalUsd,'$')+'</b></div>';
+        '<div class="kpi-card"><span class="kpi-label">총 평가자산</span><div class="kpi-value">'+fmt(totalAll,'원')+'</div>'+
+          '<div class="kpi-sub '+diffCls+'">'+diffTxt+'</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
+          '<div class="kpi-sub">'+kiwoomCount+'종목 보유</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">토스 해외</span><div class="kpi-value">'+fmt(tossUsd,'$')+'</div>'+
+          '<div class="kpi-sub">≈ '+fmt(tossKrwEq,'원')+' · '+tossCount+'종목</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value '+pnlCls+'">'+fmt(pnlKrw,'원')+'</div>'+
+          '<div class="kpi-sub '+pnlCls+'">'+(pnlRatePct==null?'-':(pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'%')+'</div></div>';
 
       // FX: USD→KRW 실시간 환율 ( /api/fx/rate : 백엔드 TTL 캐시·폴백 포함)
             const FX = FX_RATE;
