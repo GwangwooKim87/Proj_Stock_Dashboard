@@ -154,7 +154,7 @@
 
   <div class="card" style="margin:16px 0;">
     <b>종목별 평가금액 비중</b>
-    <div id="donutItem" style="height:340px;"></div>
+    <div id="donutItem" style="height:260px;"></div>
   </div>
   <div class="card" style="margin:16px 0;">
     <b>원화 vs 외화 비중</b>
@@ -392,7 +392,10 @@
               const pctMap={};
               pieData.forEach(d=>{ pctMap[d.name]= totalVal? (d.value/totalVal*100):0; });
               const legendLabel = (name, on) => on ? '{bold|'+name+'}  {bold|'+pctMap[name].toFixed(1)+'%}' : name+'  '+pctMap[name].toFixed(1)+'%';
-              const itemDonut=echarts.init($('donutItem'));
+              // 카드 상하 크기를 범례 항목 수(=내용)에 맞춰 동적 산정 (고정값이면 항목 적을 때 빈 공간 발생)
+              const donutItemEl=$('donutItem');
+              donutItemEl.style.height = Math.max(200, pieData.length*30+50)+'px';
+              const itemDonut=echarts.init(donutItemEl);
               itemDonut.setOption({
                 tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
                 legend:{ orient:'vertical', right:16, top:'middle', itemWidth:12, itemHeight:12, itemGap:12,
