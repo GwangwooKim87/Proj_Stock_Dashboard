@@ -23,7 +23,7 @@
   .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f;}
   .pos th{ color:#9aa0aa; font-weight:600;}
   .pos .num{ text-align:right; font-variant-numeric:tabular-nums;}
-  .red{ color:#ff5c5c;} .green{ color:#4ade80;}
+  .red{ color:#ff5c5c;} .green{ color:#4ade80;} .blue{ color:#58a6ff;}
   .tag{ display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#252a35; color:#9aa0aa; margin-left:6px;}
   .range-btn{ background:#252a35; border:1px solid #2a2e38; color:#9aa0aa; border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s;}
   .range-btn:hover{ color:#e8e8e8;}
@@ -132,6 +132,8 @@
     </div>
   </header>
 
+  <div class="sum" id="summary"></div>
+
   <div class="card" style="margin:16px 0;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <b>총자산 시계열 추이</b>
@@ -144,7 +146,6 @@
     <div id="trendChart" style="height:320px;"></div>
   </div>
 
-  <div class="sum" id="summary"></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:16px 0;">
     <div class="card"><b>종목별 평가금액 비중</b><div id="donutItem" style="height:300px;"></div></div>
     <div class="card"><b>원화 vs 외화 비중</b><div id="donutCcy" style="height:300px;"></div></div>
@@ -159,7 +160,7 @@
 
   <script>
     const $=id=>document.getElementById(id);
-    const fmt=(n,cur='')=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); return cur? s+' '+cur : s; };
+    const fmt=(n,cur='',prefix=false)=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); if(!cur) return s; return prefix ? cur+s : s+' '+cur; };
 
     // ===== M1 인증 상태 처리 (M1-2: 서버 세션 연동) =====
     const AUTH_COOKIE='sdb_session';
@@ -283,7 +284,8 @@
       const items=d.holdings||[];
       let totalKrw=0, totalUsd=0;
       let kiwoomKrw=0, kiwoomCount=0;
-      let tossUsd=0, tossKrwEq=0, tossCount=0;
+      let tossDomKrw=0, tossDomCount=0;
+      let tossForeignUsd=0, tossForeignKrwEq=0, tossForeignCount=0;
       let pnlKrw=0, investKrw=0;
       items.forEach(h=>{
         const mv=h.qty*h.cur_price;
@@ -293,7 +295,10 @@
         const pnlKrwItem = h.currency==='USD' ? (h.p_pnl||0)*FX_RATE : (h.p_pnl||0);
         if(h.currency==='USD') totalUsd+=mv; else totalKrw+=mv;
         if(h.broker==='kiwoom'){ kiwoomKrw+=mvKrw; kiwoomCount++; }
-        else if(h.broker==='toss'){ tossCount++; tossKrwEq+=mvKrw; if(h.currency==='USD') tossUsd+=mv; }
+        else if(h.broker==='toss'){
+          if(h.currency==='USD'){ tossForeignCount++; tossForeignUsd+=mv; tossForeignKrwEq+=mvKrw; }
+          else { tossDomCount++; tossDomKrw+=mv; }
+        }
         pnlKrw += pnlKrwItem;
         investKrw += investKrwItem;
       });
@@ -306,8 +311,9 @@
         const prevTotal = hist.total_values[hist.total_values.length-1];
         if(prevTotal){ diffAmt = totalAll - prevTotal; diffPct = diffAmt/prevTotal*100; }
       }
+      // 국내 주식 관례: 상승 초록, 하락 파랑
       const diffArrow = diffAmt==null ? '' : (diffAmt>0?'▲ ':diffAmt<0?'▼ ':'');
-      const diffCls = diffAmt==null ? '' : (diffAmt>0?'green':diffAmt<0?'red':'');
+      const diffCls = diffAmt==null ? '' : (diffAmt>0?'green':diffAmt<0?'blue':'');
       const diffTxt = diffAmt==null ? '전일 대비 데이터 없음'
         : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+(diffPct>=0?'+':'')+diffPct.toFixed(2)+'%)';
       const pnlCls = pnlKrw>0?'green':(pnlKrw<0?'red':'');
@@ -317,8 +323,10 @@
           '<div class="kpi-sub '+diffCls+'">'+diffTxt+'</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
           '<div class="kpi-sub">'+kiwoomCount+'종목 보유</div></div>'+
-        '<div class="kpi-card"><span class="kpi-label">토스 해외</span><div class="kpi-value">'+fmt(tossUsd,'$')+'</div>'+
-          '<div class="kpi-sub">≈ '+fmt(tossKrwEq,'원')+' · '+tossCount+'종목</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">토스 국내</span><div class="kpi-value">'+fmt(tossDomKrw,'원')+'</div>'+
+          '<div class="kpi-sub">'+tossDomCount+'종목 보유</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">토스 해외</span><div class="kpi-value">'+fmt(tossForeignUsd,'$',true)+'</div>'+
+          '<div class="kpi-sub">≈ '+fmt(tossForeignKrwEq,'원')+' · '+tossForeignCount+'종목</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value '+pnlCls+'">'+fmt(pnlKrw,'원')+'</div>'+
           '<div class="kpi-sub '+pnlCls+'">'+(pnlRatePct==null?'-':(pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'%')+'</div></div>';
 
