@@ -400,17 +400,21 @@
       const items = filterItemsByPosFilter(window._posItems || []);
       const qmap = window._quotesMap || {};
 
-      // 필터 행 요약: 현재 필터 기준 평가금액/총손익 (혼합 통화는 KRW 환산 합산)
+      // 필터 행 요약: 현재 필터 기준 평가금액/총손익(+%) (혼합 통화는 KRW 환산 합산)
       const FX = window._FX_RATE || 0;
-      let sumEvalKrw=0, sumPnlKrw=0;
+      let sumEvalKrw=0, sumPnlKrw=0, sumInvestKrw=0;
       items.forEach(h=>{
         const mv=h.qty*h.cur_price;
+        const investNative=(h.avg_price||0)*h.qty;
         sumEvalKrw += h.currency==='USD' ? mv*FX : mv;
         sumPnlKrw += h.currency==='USD' ? (h.p_pnl||0)*FX : (h.p_pnl||0);
+        sumInvestKrw += h.currency==='USD' ? investNative*FX : investNative;
       });
-      const sumPnlCls = sumPnlKrw>0?'green':(sumPnlKrw<0?'red':'');
+      const sumPnlRate = sumInvestKrw ? (sumPnlKrw/sumInvestKrw*100) : null;
+      // 국내 주식 관례: 상승(+) 빨강, 하락(-) 파랑
+      const sumPnlCls = sumPnlKrw>0?'red':(sumPnlKrw<0?'blue':'');
       $('filterSummary').innerHTML = items.length
-        ? '<span>평가금액 <b>'+fmt(sumEvalKrw,'원')+'</b></span><span>총손익 <b class="'+sumPnlCls+'">'+fmt(sumPnlKrw,'원')+'</b></span>'
+        ? '<span>평가금액 <b>'+fmt(sumEvalKrw,'원')+'</b></span><span>총손익 <b class="'+sumPnlCls+'">'+fmt(sumPnlKrw,'원')+(sumPnlRate==null?'':' ('+fmtPctSigned(sumPnlRate)+')')+'</b></span>'
         : '';
 
       $('posbody').innerHTML=items.map(h=>{
