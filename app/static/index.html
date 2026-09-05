@@ -16,6 +16,15 @@
   .kpi-row{ display:grid; gap:12px; margin:16px 0 0; }
   .kpi-row.top{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
   .kpi-row.bottom{ grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-top:12px; }
+  #kpiWrap{ position:relative; }
+  #kpiWrap.kpi-blurred .kpi-row{ filter:blur(9px); user-select:none; pointer-events:none; }
+  .kpi-reveal-overlay{ display:none; position:absolute; inset:0; align-items:center; justify-content:center; z-index:5; }
+  #kpiWrap.kpi-blurred .kpi-reveal-overlay{ display:flex; }
+  #kpiRevealBtn{ padding:10px 18px; font-size:13px; background:#1a1d24; border-color:#2a2e38; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+  .market-ticker-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin:2px 0 10px; }
+  .market-ticker{ display:flex; gap:8px; white-space:nowrap; }
+  .market-chip{ display:inline-flex; align-items:center; gap:4px; flex:none; font-size:11px; color:#9aa0aa; background:#1a1d24; border:1px solid #2a2e38; border-radius:8px; padding:4px 9px; }
+  .market-chip b{ color:#e8e8e8; font-weight:600; font-variant-numeric:tabular-nums; }
   .kpi-card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:16px 18px; }
   .kpi-row.top .kpi-card .kpi-value{ font-size:24px; }
   .kpi-card .kpi-label{ display:block; color:#9aa0aa; font-size:12px; margin-bottom:6px; }
@@ -138,9 +147,15 @@
       <button class="icon-btn" id="logoutBtn" title="로그아웃">⏻</button>
     </div>
   </header>
+  <div class="market-ticker-wrap"><div class="market-ticker" id="marketTicker"></div></div>
 
-  <div class="kpi-row top" id="summaryTop"></div>
-  <div class="kpi-row bottom" id="summaryBottom"></div>
+  <div id="kpiWrap" class="kpi-blurred">
+    <div class="kpi-row top" id="summaryTop"></div>
+    <div class="kpi-row bottom" id="summaryBottom"></div>
+    <div class="kpi-reveal-overlay">
+      <button class="range-btn" id="kpiRevealBtn">🙈 자산 정보 표시하기</button>
+    </div>
+  </div>
 
   <div class="card" style="margin:16px 0;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -186,6 +201,17 @@
     // M5: -0.00% 마이너스 부호 출력 방지
     const fmtPct=(r)=>{ if(r===void 0||r===null)return '-'; let s=Number(r).toFixed(2); if(s==='-0.00') s='0.00'; return s+'%'; };
     const BROKER_NAMES={ kiwoom:'키움증권', toss:'토스증권' };
+    // M6-3: 주요 증시 지수 티커 (코스피/코스닥/나스닥/S&P500/다우존스/필라델피아반도체). 상승(+)빨강/하락(-)파랑.
+    function renderMarketTicker(indices){
+      const el=$('marketTicker');
+      if(!el) return;
+      if(!indices || !indices.length){ el.innerHTML='<span class="muted" style="font-size:11px;">증시 지수 조회 실패</span>'; return; }
+      el.innerHTML = indices.map(idx=>{
+        const cls = idx.change>0?'red':idx.change<0?'blue':'';
+        const sign = idx.change>0?'+':'';
+        return '<span class="market-chip">'+idx.name+' <b>'+fmt(idx.price)+'</b> <span class="'+cls+'">'+sign+fmt(idx.change)+' ('+sign+idx.rate.toFixed(2)+'%)</span></span>';
+      }).join('');
+    }
 
     // ===== M1 인증 상태 처리 (M1-2: 서버 세션 연동) =====
     const AUTH_COOKIE='sdb_session';
@@ -323,16 +349,18 @@
 
     // ===== M5 보유 종목 테이블: 계좌별 필터 + 렌더링 =====
     let posFilter='all';
-    function renderPosTable(){
-      const all = window._posItems || [];
-      const qmap = window._quotesMap || {};
-      const items = all.filter(h=>{
+    function filterItemsByPosFilter(all){
+      return all.filter(h=>{
         if(posFilter==='all') return true;
         if(posFilter==='kiwoom') return h.broker==='kiwoom';
         if(posFilter==='toss-dom') return h.broker==='toss' && h.currency!=='USD';
         if(posFilter==='toss-foreign') return h.broker==='toss' && h.currency==='USD';
         return true;
       });
+    }
+    function renderPosTable(){
+      const items = filterItemsByPosFilter(window._posItems || []);
+      const qmap = window._quotesMap || {};
       $('posbody').innerHTML=items.map(h=>{
         const pnlCls = h.p_pnl > 0 ? 'green' : (h.p_pnl < 0 ? 'red' : '');
         const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
@@ -348,24 +376,103 @@
         '<td class="num '+dailyCls+'">'+dailyTxt+'</td></tr>';
       }).join('') || '<tr><td colspan="9" class="muted" style="text-align:center;padding:16px;">해당 조건의 보유 종목이 없습니다</td></tr>';
     }
+    // ===== M6-1: 종목별 비중 도넛 - 계좌 필터 연동 + 반응형(모바일 겹침 방지) =====
+    function computeItemPieData(items, FX_RATE){
+      const byName={};
+      items.forEach(h=>{
+        const k=(h.name||h.symbol);
+        const valKrw=(h.currency==='USD') ? h.qty*h.cur_price*FX_RATE : h.qty*h.cur_price;
+        byName[k]=(byName[k]||0)+valKrw;
+      });
+      const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
+      const grandTotal=itemSort.reduce((s,[,v])=>s+v,0);
+      const threshold=grandTotal*0.02;
+      const shown=itemSort.filter(([,v])=>v>=threshold);
+      const restSum=itemSort.filter(([,v])=>v<threshold).reduce((s,[,v])=>s+v,0);
+      const pieData=shown.map(([n,v])=>({name:n,value:Math.round(v)}));
+      if(restSum>0) pieData.push({name:'기타',value:Math.round(restSum)});
+      const totalVal=pieData.reduce((s,d)=>s+d.value,0);
+      const pctMap={};
+      pieData.forEach(d=>{ pctMap[d.name]=totalVal?(d.value/totalVal*100):0; });
+      return {pieData, pctMap};
+    }
+    function renderItemDonut(){
+      const el=$('donutItem');
+      if(!el || !window.echarts) return;
+      const pieData=window._pieData||[], pctMap=window._pctMap||{};
+      if(!pieData.length){ el.innerHTML='<div class="muted" style="height:100%;display:flex;align-items:center;justify-content:center;">표시할 종목이 없습니다</div>'; return; }
+      const legendLabel=(name,on)=> on ? '{bold|'+name+'}  {bold|'+pctMap[name].toFixed(1)+'%}' : name+'  '+pctMap[name].toFixed(1)+'%';
+      const width = el.clientWidth || el.parentElement.clientWidth || 900;
+      const isMobile = width < 480;
+      const rows = pieData.length;
+      const fontSize = isMobile ? 12 : 14;
+      const textStyle = { color:'#9aa0aa', fontSize, rich:{ bold:{ color:'#e8e8e8', fontWeight:'bold', fontSize } } };
+      let containerHeight, center, radius, legend;
+      // 도넛 세로 크기를 범례 전체 세로 길이에 맞춰 산정(모바일은 상단 도넛+하단 범례 스택 배치로 겹침 방지)
+      if(isMobile){
+        const rowH=22;
+        const pieD=Math.min(130, width*0.4);
+        containerHeight = pieD+26+rows*rowH+14;
+        center=['50%', pieD/2+10]; radius=[pieD*0.28, pieD/2];
+        legend={ orient:'vertical', left:'center', top:pieD+22, itemWidth:9, itemHeight:9, itemGap:6, textStyle, formatter:n=>legendLabel(n,false) };
+      } else {
+        const rowH=30;
+        const legendH=rows*rowH;
+        containerHeight=Math.max(200, legendH+50);
+        const pieD=Math.min(legendH, containerHeight-30);
+        center=['24%','50%']; radius=[pieD*0.27, pieD/2];
+        legend={ orient:'vertical', right:16, top:'middle', itemWidth:12, itemHeight:12, itemGap:12, textStyle, formatter:n=>legendLabel(n,false) };
+      }
+      el.innerHTML='';
+      el.style.height = containerHeight+'px';
+      if(!window._itemDonut) window._itemDonut = echarts.init(el);
+      const chart = window._itemDonut;
+      chart.resize();
+      chart.setOption({
+        tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
+        legend,
+        series:[{type:'pie', center, radius,
+          label:{show:false}, labelLine:{show:false},
+          emphasis:{ focus:'self', label:{show:false} }, blurScope:'coordinateSystem',
+          data:pieData}]
+      }, true);
+      chart.off('mouseover'); chart.off('mouseout');
+      chart.on('mouseover', params=>{ if(params.componentType!=='series') return;
+        chart.setOption({ legend:{ formatter:name=>legendLabel(name, name===params.name) } }); });
+      chart.on('mouseout', params=>{ if(params.componentType!=='series') return;
+        chart.setOption({ legend:{ formatter:name=>legendLabel(name, false) } }); });
+    }
+    function updateItemDonutForFilter(){
+      const items = filterItemsByPosFilter(window._posItems || []);
+      const {pieData, pctMap} = computeItemPieData(items, window._FX_RATE||0);
+      window._pieData=pieData; window._pctMap=pctMap;
+      renderItemDonut();
+    }
+    window.addEventListener('resize', ()=> window._pieData && renderItemDonut());
+
     document.querySelectorAll('#posFilterBtns .range-btn').forEach(b=>b.addEventListener('click',()=>{
       document.querySelectorAll('#posFilterBtns .range-btn').forEach(x=>x.classList.toggle('active', x===b));
       posFilter = b.dataset.filter;
       renderPosTable();
+      updateItemDonutForFilter();
     }));
 
     // ===== 대시보드 데이터 로딩 (로그인 후/갱신 시 재호출) =====
-    function loadDashboardData(){
+    // force=true: 수동 새로고침 - 환율/증시 지수 TTL 캐시 무시하고 강제 갱신(같이 업데이트)
+    function loadDashboardData(force){
       loadTrend('7d');
+      const qp = force ? '?refresh=true' : '';
 
     Promise.all([
       fetch('/api/portfolio').then(r=>r.json()),
-      fetch('/api/fx/rate').then(r=>r.json()).catch(()=>({rate:null})),
+      fetch('/api/fx/rate'+qp).then(r=>r.json()).catch(()=>({rate:null})),
       fetch('/api/portfolio/history?range=7d').then(r=>r.json()).catch(()=>null),
-      fetch('/api/quotes/summary').then(r=>r.json()).catch(()=>({quotes:[]}))
-    ]).then(([d, fxd, hist, qs])=>{
+      fetch('/api/quotes/summary').then(r=>r.json()).catch(()=>({quotes:[]})),
+      fetch('/api/market/indices'+qp).then(r=>r.json()).catch(()=>({indices:[]}))
+    ]).then(([d, fxd, hist, qs, mkt])=>{
       const quotesMap={};
       (qs && qs.quotes || []).forEach(q=>{ quotesMap[q.symbol]=q; });
+      renderMarketTicker(mkt && mkt.indices);
       const FX_RATE = (fxd && fxd.rate) ? Number(fxd.rate) : 0;
       const items=d.holdings||[];
       let totalKrw=0, totalUsd=0;
@@ -421,52 +528,9 @@
       // FX: USD→KRW 실시간 환율 ( /api/fx/rate : 백엔드 TTL 캐시·폴백 포함)
             const FX = FX_RATE;
 
-            // 도넛 1: 종목별 평가금액 비중 (USD 종목은 FX 환산 후 비중)
-            // 카드 전체 폭 사용: 좌측 도넛(겹침 없는 여백 확보) + 우측 세로 범례(색점+종목명+비중%)
-            // 세분화: 고정 top-N 대신 비중 2% 미만만 "기타"로 묶어 소수 종목에 쏠리지 않게 처리
-            // 호버 시 해당 종목만 강조(emphasis.focus) + 나머지 흐림(blur) 처리
-            if (FX_RATE && window.echarts && $('donutItem')) {
-              const byName={};
-              items.forEach(h=>{
-                const k=(h.name||h.symbol);
-                const valKrw =(h.currency==='USD') ? h.qty*h.cur_price*FX : h.qty*h.cur_price;
-                byName[k]=(byName[k]||0)+valKrw;
-              });
-              const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
-              const grandTotal=itemSort.reduce((s,[,v])=>s+v,0);
-              const threshold=grandTotal*0.02;
-              const shown=itemSort.filter(([,v])=>v>=threshold);
-              const restSum=itemSort.filter(([,v])=>v<threshold).reduce((s,[,v])=>s+v,0);
-              const pieData=shown.map(([n,v])=>({name:n,value:Math.round(v)}));
-              if(restSum>0) pieData.push({name:'기타',value:Math.round(restSum)});
-              const totalVal=pieData.reduce((s,d)=>s+d.value,0);
-              const pctMap={};
-              pieData.forEach(d=>{ pctMap[d.name]= totalVal? (d.value/totalVal*100):0; });
-              const legendLabel = (name, on) => on ? '{bold|'+name+'}  {bold|'+pctMap[name].toFixed(1)+'%}' : name+'  '+pctMap[name].toFixed(1)+'%';
-              // 카드 상하 크기를 범례 항목 수(=내용)에 맞춰 동적 산정 (고정값이면 항목 적을 때 빈 공간 발생)
-              const donutItemEl=$('donutItem');
-              donutItemEl.style.height = Math.max(200, pieData.length*30+50)+'px';
-              const itemDonut=echarts.init(donutItemEl);
-              itemDonut.setOption({
-                tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
-                legend:{ orient:'vertical', right:16, top:'middle', itemWidth:12, itemHeight:12, itemGap:12,
-                  textStyle:{ color:'#9aa0aa', fontSize:14, rich:{ bold:{ color:'#e8e8e8', fontWeight:'bold', fontSize:14 } } },
-                  formatter: name => legendLabel(name, false) },
-                series:[{type:'pie',radius:['34%','58%'],center:['24%','50%'],
-                  label:{show:false},labelLine:{show:false},
-                  emphasis:{ focus:'self', label:{show:false} }, blurScope:'coordinateSystem',
-                  data:pieData}]});
-              // 도넛 슬라이스 호버 시 오른쪽 범례 항목도 볼드 강조
-              itemDonut.on('mouseover', params=>{
-                if(params.componentType!=='series') return;
-                itemDonut.setOption({ legend:{ formatter: name => legendLabel(name, name===params.name) } });
-              });
-              itemDonut.on('mouseout', params=>{
-                if(params.componentType!=='series') return;
-                itemDonut.setOption({ legend:{ formatter: name => legendLabel(name, false) } });
-              });
-              window._d1=itemDonut;
-            }
+            // 도넛 1: 종목별 평가금액 비중 - 계좌 필터 연동 렌더링 (M6-1). 로직은 computeItemPieData/renderItemDonut 공용 함수.
+            window._FX_RATE = FX_RATE;
+            updateItemDonutForFilter();
 
             // 도넛 2: 원화 vs 외화 비중 → M4: 가로 스택 프로그레스 바로 교체
             if ($('donutCcy')) {
@@ -498,18 +562,26 @@
     }).catch(e=>{ $('status').textContent='포트폴리오 로드 실패: '+e; $('status').classList.add('show'); });
     } // end loadDashboardData()
 
-    // ===== M2 헤더 버튼: 새로고침 / 로그아웃 =====
+    // ===== M2 헤더 버튼: 새로고침(강제 갱신) / 로그아웃 =====
     (function(){
       const refreshBtn=$('refreshBtn'), logoutBtn=$('logoutBtn');
       if(refreshBtn) refreshBtn.addEventListener('click', ()=>{
         refreshBtn.classList.add('spinning');
-        loadDashboardData();
+        loadDashboardData(true);
         setTimeout(()=>refreshBtn.classList.remove('spinning'), 600);
       });
       if(logoutBtn) logoutBtn.addEventListener('click', async ()=>{
         try{ await fetch('/api/logout',{method:'POST'}); }catch(e){}
         showLogin();
       });
+    })();
+
+    // ===== M6-2: 자산 정보 카드 기본 블러 → 버튼 클릭 시 표시 =====
+    // 오버레이 버튼은 블러 상태(.kpi-blurred)에서만 노출되므로 편도(reveal) 동작으로 구현.
+    (function(){
+      const wrap=$('kpiWrap'), btn=$('kpiRevealBtn');
+      if(!wrap||!btn) return;
+      btn.addEventListener('click', ()=> wrap.classList.remove('kpi-blurred'));
     })();
   </script>
 </body>

@@ -128,8 +128,8 @@ def get_usd_krw(force_refresh=False):
     return FALLBACK_RATE
 
 
-def get_fx_summary():
-    r = get_usd_krw()
+def get_fx_summary(force_refresh=False):
+    r = get_usd_krw(force_refresh=force_refresh)
     ts = _cache["ts"]
     return {
         "rate": r,

@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
-from . import db, brokers, snapshots, fx, auth, config
+from . import db, brokers, snapshots, fx, auth, config, market
 
 
 app = FastAPI(title="Stock Dashboard", version="0.1.0")
@@ -102,9 +102,15 @@ def quotes_summary():
 
 
 @app.get("/api/fx/rate")
-def fx_rate():
-    """실시간 USD→KRW 환율 (TTL 1h, 폴백 포함)."""
-    return JSONResponse(fx.get_fx_summary())
+def fx_rate(refresh: bool = False):
+    """실시간 USD→KRW 환율 (TTL 1h, 폴백 포함). refresh=true 시 캐시 무시하고 강제 갱신."""
+    return JSONResponse(fx.get_fx_summary(force_refresh=refresh))
+
+
+@app.get("/api/market/indices")
+def market_indices(refresh: bool = False):
+    """주요 증시 지수(코스피/코스닥/나스닥/S&P500/다우존스/필라델피아반도체). TTL 1h, 폴백 포함."""
+    return JSONResponse(market.get_market_summary(force_refresh=refresh))
 
 
 @app.get("/")
