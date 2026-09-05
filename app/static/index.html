@@ -213,6 +213,8 @@
     const fmtCcy=(n,ccy)=>{ if(n===void 0||n===null)return '-'; const opts= ccy==='USD' ? {minimumFractionDigits:2,maximumFractionDigits:2} : {maximumFractionDigits:0}; return Number(n).toLocaleString('ko-KR',opts); };
     // M5: -0.00% 마이너스 부호 출력 방지
     const fmtPct=(r)=>{ if(r===void 0||r===null)return '-'; let s=Number(r).toFixed(2); if(s==='-0.00') s='0.00'; return s+'%'; };
+    // 부호(+/-) 표시가 필요한 등락률용 - -0.00% 방지 로직 공유
+    const fmtPctSigned=(r)=>{ if(r===void 0||r===null)return null; let s=Number(r).toFixed(2); if(s==='-0.00') s='0.00'; return (parseFloat(s)>0?'+':'')+s+'%'; };
     const BROKER_NAMES={ kiwoom:'키움증권', toss:'토스증권' };
     // M6-3: 주요 증시 지수 티커 (코스피/코스닥/나스닥/S&P500/다우존스/필라델피아반도체). 상승(+)빨강/하락(-)파랑.
     function renderMarketTicker(indices){
@@ -448,7 +450,7 @@
       const chart = window._itemDonut;
       chart.resize();
       chart.setOption({
-        tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
+        tooltip:{show:false}, // 범례 볼드 강조로 충분 - 호버 시 별도 텍스트 박스 비표시
         legend,
         series:[{type:'pie', center, radius,
           label:{show:false}, labelLine:{show:false},
@@ -456,9 +458,13 @@
           data:pieData}]
       }, true);
       chart.off('mouseover'); chart.off('mouseout');
+      // 모바일 터치에서 downplay 없이 highlight만 쌓이면 여러 조각이 동시에 강조되는 문제 방지: 항상 전체 downplay 후 단일 강조
       chart.on('mouseover', params=>{ if(params.componentType!=='series') return;
+        chart.dispatchAction({ type:'downplay', seriesIndex:0 });
+        chart.dispatchAction({ type:'highlight', seriesIndex:0, name:params.name });
         chart.setOption({ legend:{ formatter:name=>legendLabel(name, name===params.name) } }); });
       chart.on('mouseout', params=>{ if(params.componentType!=='series') return;
+        chart.dispatchAction({ type:'downplay', seriesIndex:0 });
         chart.setOption({ legend:{ formatter:name=>legendLabel(name, false) } }); });
     }
     function updateItemDonutForFilter(){
@@ -527,17 +533,19 @@
       const diffArrow = diffAmt==null ? '' : (diffAmt>0?'▲ ':diffAmt<0?'▼ ':'');
       const diffCls = diffAmt==null ? '' : (diffAmt>0?'red':diffAmt<0?'blue':'');
       const diffTxt = diffAmt==null ? '전일 대비 데이터 없음'
-        : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+(diffPct>=0?'+':'')+diffPct.toFixed(2)+'%)';
+        : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+fmtPctSigned(diffPct)+')';
       const pnlRateCls = pnlRatePct==null ? '' : (pnlRatePct>0?'red':pnlRatePct<0?'blue':'');
-      const pnlArrow = pnlKrw>0?'▲ ':pnlKrw<0?'▼ ':'';
-      const pnlSubTxt = pnlRatePct==null ? '-'
-        : (pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'% · '+pnlArrow+fmt(Math.abs(pnlKrw),'원');
+      // 일 수익: 전일 대비 총평가자산 변동(diffAmt/diffPct)을 별도 카드로 노출
+      const dailyValTxt = diffAmt==null ? '-' : (diffAmt>0?'+':'')+fmt(diffAmt,'원');
+      const dailySubTxt = diffPct==null ? '전일 대비 데이터 없음' : fmtPctSigned(diffPct);
 
       $('summaryTop').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">총 평가자산</span><div class="kpi-value">'+fmt(totalAll,'원')+'</div>'+
           '<div class="kpi-sub '+diffCls+'">'+diffTxt+'</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">일 수익</span><div class="kpi-value">'+dailyValTxt+'</div>'+
+          '<div class="kpi-sub '+diffCls+'">'+dailySubTxt+'</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value">'+fmt(pnlKrw,'원')+'</div>'+
-          '<div class="kpi-sub '+pnlRateCls+'">'+pnlSubTxt+'</div></div>';
+          '<div class="kpi-sub '+pnlRateCls+'">'+(pnlRatePct==null?'-':fmtPctSigned(pnlRatePct))+'</div></div>';
 
       $('summaryBottom').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
@@ -549,10 +557,6 @@
 
       // FX: USD→KRW 실시간 환율 ( /api/fx/rate : 백엔드 TTL 캐시·폴백 포함)
             const FX = FX_RATE;
-
-            // 도넛 1: 종목별 평가금액 비중 - 계좌 필터 연동 렌더링 (M6-1). 로직은 computeItemPieData/renderItemDonut 공용 함수.
-            window._FX_RATE = FX_RATE;
-            updateItemDonutForFilter();
 
             // 도넛 2: 원화 vs 외화 비중 → M4: 가로 스택 프로그레스 바로 교체
             if ($('donutCcy')) {
@@ -577,7 +581,10 @@
 
       window._posItems = items;
       window._quotesMap = quotesMap;
+      window._FX_RATE = FX_RATE;
       renderPosTable();
+      // 도넛 1: 종목별 평가금액 비중 - 계좌 필터 연동 렌더링 (M6-1). window._posItems 설정 이후에 호출해야 함(최초 접속 시 순서 버그).
+      updateItemDonutForFilter();
       $('status').classList.remove('show');
       $('fxBadge').innerHTML = FX_RATE ? '1 USD = <b>'+fmt(Math.round(FX_RATE))+'</b> KRW' : 'FX 조회 실패';
       $('lastUpdated').textContent = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
