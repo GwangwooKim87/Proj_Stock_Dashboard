@@ -36,6 +36,16 @@
   .kpi-card .kpi-value.green, .kpi-card .kpi-sub.green{ color:#4ade80; }
   .kpi-card .kpi-value.blue, .kpi-card .kpi-sub.blue{ color:#58a6ff; }
   .pos-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .pos-cards{ display:none; }
+  .holding-card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .holding-card .hc-name{ font-size:14px; font-weight:600; color:#e8e8e8; margin-bottom:8px; }
+  .holding-card .hc-row{ display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:13px; }
+  .holding-card .hc-label{ color:#9aa0aa; }
+  .holding-card .hc-val{ font-variant-numeric:tabular-nums; font-weight:600; }
+  @media (max-width:640px){
+    .pos-wrap{ display:none; }
+    .pos-cards{ display:block; }
+  }
   .pos{ width:100%; font-size:13px; border-collapse:collapse;}
   .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f; white-space:nowrap;}
   .pos th{ color:#9aa0aa; font-weight:600;}
@@ -197,6 +207,7 @@
       <tbody id="posbody"></tbody>
     </table>
   </div>
+  <div class="pos-cards" id="posCards"></div>
   </div>
 
   <script>
@@ -390,6 +401,18 @@
         '<td class="num '+rateCls+'">'+fmtPct(h.p_pnl_rate)+'</td>'+
         '<td class="num '+dailyCls+'">'+dailyTxt+'</td></tr>';
       }).join('') || '<tr><td colspan="9" class="muted" style="text-align:center;padding:16px;">해당 조건의 보유 종목이 없습니다</td></tr>';
+
+      // 모바일 카드 리스트 뷰 (종목명 상단 고정 + 보유수량/평가금액/수익률)
+      $('posCards').innerHTML=items.map(h=>{
+        const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
+        const evalAmt = h.qty*h.cur_price;
+        return '<div class="holding-card">'+
+          '<div class="hc-name">'+h.name+'<span class="tag">'+h.symbol+'</span></div>'+
+          '<div class="hc-row"><span class="hc-label">보유수량</span><span class="hc-val">'+fmt(h.qty)+'</span></div>'+
+          '<div class="hc-row"><span class="hc-label">평가금액</span><span class="hc-val">'+fmtCcy(evalAmt,h.currency)+(h.currency==='USD'?' $':' 원')+'</span></div>'+
+          '<div class="hc-row"><span class="hc-label">수익률</span><span class="hc-val '+rateCls+'">'+fmtPct(h.p_pnl_rate)+'</span></div>'+
+        '</div>';
+      }).join('') || '<div class="muted" style="text-align:center;padding:16px;">해당 조건의 보유 종목이 없습니다</div>';
     }
     // ===== M6-1: 종목별 비중 도넛 - 계좌 필터 연동 + 반응형(모바일 겹침 방지) =====
     function computeItemPieData(items, FX_RATE){
