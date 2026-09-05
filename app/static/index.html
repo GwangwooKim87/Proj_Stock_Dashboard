@@ -21,7 +21,9 @@
   .kpi-reveal-overlay{ display:none; position:absolute; inset:0; align-items:center; justify-content:center; z-index:5; }
   #kpiWrap.kpi-blurred .kpi-reveal-overlay{ display:flex; }
   #kpiRevealBtn{ padding:10px 18px; font-size:13px; background:#1a1d24; border-color:#2a2e38; box-shadow:0 4px 16px rgba(0,0,0,.4); }
-  .market-ticker-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin:2px 0 10px; }
+  .market-ticker-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin:2px 0 10px; scrollbar-width:none; -ms-overflow-style:none; cursor:grab; }
+  .market-ticker-wrap::-webkit-scrollbar{ display:none; height:0; }
+  .market-ticker-wrap.dragging{ cursor:grabbing; user-select:none; }
   .market-ticker{ display:flex; gap:8px; white-space:nowrap; }
   .market-chip{ display:inline-flex; align-items:center; gap:4px; flex:none; font-size:11px; color:#9aa0aa; background:#1a1d24; border:1px solid #2a2e38; border-radius:8px; padding:4px 9px; }
   .market-chip b{ color:#e8e8e8; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -143,8 +145,12 @@
     <div class="topbar-right">
       <div class="fx-badge" id="fxBadge">환율 조회 중...</div>
       <div class="live-badge"><span class="dot"></span><span>Live · <span id="lastUpdated">--:--</span></span></div>
-      <button class="icon-btn" id="refreshBtn" title="새로고침">⟳</button>
-      <button class="icon-btn" id="logoutBtn" title="로그아웃">⏻</button>
+      <button class="icon-btn" id="refreshBtn" title="새로고침">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12a9 9 0 11-3-6.7M21 3v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" id="logoutBtn" title="로그아웃">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v9M18.4 6.6a8 8 0 11-12.8 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
   </header>
   <div class="market-ticker-wrap"><div class="market-ticker" id="marketTicker"></div></div>
@@ -195,7 +201,14 @@
 
   <script>
     const $=id=>document.getElementById(id);
-    const fmt=(n,cur='',prefix=false)=>{ if(n===void 0||n===null)return '-'; const s=Number(n).toLocaleString('ko-KR',{maximumFractionDigits:2}); if(!cur) return s; return prefix ? cur+s : s+' '+cur; };
+    const fmt=(n,cur='',prefix=false)=>{
+      if(n===void 0||n===null)return '-';
+      const isWon = cur==='원'; // 원화는 소수점 없이 반올림 표시
+      const num = isWon ? Math.round(Number(n)) : Number(n);
+      const s = num.toLocaleString('ko-KR', isWon ? {maximumFractionDigits:0} : {maximumFractionDigits:2});
+      if(!cur) return s;
+      return prefix ? cur+s : s+' '+cur;
+    };
     // M5: 통화별 포맷 - KRW 정수(콤마), USD 소수 둘째 자리 고정
     const fmtCcy=(n,ccy)=>{ if(n===void 0||n===null)return '-'; const opts= ccy==='USD' ? {minimumFractionDigits:2,maximumFractionDigits:2} : {maximumFractionDigits:0}; return Number(n).toLocaleString('ko-KR',opts); };
     // M5: -0.00% 마이너스 부호 출력 방지
@@ -400,7 +413,11 @@
       const el=$('donutItem');
       if(!el || !window.echarts) return;
       const pieData=window._pieData||[], pctMap=window._pctMap||{};
-      if(!pieData.length){ el.innerHTML='<div class="muted" style="height:100%;display:flex;align-items:center;justify-content:center;">표시할 종목이 없습니다</div>'; return; }
+      if(!pieData.length){
+        if(window._itemDonut){ window._itemDonut.dispose(); window._itemDonut=null; }
+        el.innerHTML='<div class="muted" style="height:100%;display:flex;align-items:center;justify-content:center;">표시할 종목이 없습니다</div>';
+        return;
+      }
       const legendLabel=(name,on)=> on ? '{bold|'+name+'}  {bold|'+pctMap[name].toFixed(1)+'%}' : name+'  '+pctMap[name].toFixed(1)+'%';
       const width = el.clientWidth || el.parentElement.clientWidth || 900;
       const isMobile = width < 480;
@@ -423,9 +440,11 @@
         center=['24%','50%']; radius=[pieD*0.27, pieD/2];
         legend={ orient:'vertical', right:16, top:'middle', itemWidth:12, itemHeight:12, itemGap:12, textStyle, formatter:n=>legendLabel(n,false) };
       }
-      el.innerHTML='';
       el.style.height = containerHeight+'px';
-      if(!window._itemDonut) window._itemDonut = echarts.init(el);
+      if(!window._itemDonut){
+        el.innerHTML=''; // 최초 1회 초기화 직전에만 플레이스홀더 텍스트 등 잔여 DOM 정리
+        window._itemDonut = echarts.init(el);
+      }
       const chart = window._itemDonut;
       chart.resize();
       chart.setOption({
@@ -510,12 +529,15 @@
       const diffTxt = diffAmt==null ? '전일 대비 데이터 없음'
         : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+(diffPct>=0?'+':'')+diffPct.toFixed(2)+'%)';
       const pnlRateCls = pnlRatePct==null ? '' : (pnlRatePct>0?'red':pnlRatePct<0?'blue':'');
+      const pnlArrow = pnlKrw>0?'▲ ':pnlKrw<0?'▼ ':'';
+      const pnlSubTxt = pnlRatePct==null ? '-'
+        : (pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'% · '+pnlArrow+fmt(Math.abs(pnlKrw),'원');
 
       $('summaryTop').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">총 평가자산</span><div class="kpi-value">'+fmt(totalAll,'원')+'</div>'+
           '<div class="kpi-sub '+diffCls+'">'+diffTxt+'</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value">'+fmt(pnlKrw,'원')+'</div>'+
-          '<div class="kpi-sub '+pnlRateCls+'">'+(pnlRatePct==null?'-':(pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'%')+'</div></div>';
+          '<div class="kpi-sub '+pnlRateCls+'">'+pnlSubTxt+'</div></div>';
 
       $('summaryBottom').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
@@ -582,6 +604,23 @@
       const wrap=$('kpiWrap'), btn=$('kpiRevealBtn');
       if(!wrap||!btn) return;
       btn.addEventListener('click', ()=> wrap.classList.remove('kpi-blurred'));
+    })();
+
+    // ===== 증시 지수 티커: 스크롤바 숨김 + 마우스 드래그로 가로 스크롤 =====
+    (function(){
+      const wrap=document.querySelector('.market-ticker-wrap');
+      if(!wrap) return;
+      let isDown=false, startX=0, startScroll=0;
+      wrap.addEventListener('mousedown', e=>{
+        isDown=true; wrap.classList.add('dragging');
+        startX=e.pageX; startScroll=wrap.scrollLeft;
+      });
+      ['mouseleave','mouseup'].forEach(evt=>wrap.addEventListener(evt, ()=>{ isDown=false; wrap.classList.remove('dragging'); }));
+      wrap.addEventListener('mousemove', e=>{
+        if(!isDown) return;
+        e.preventDefault();
+        wrap.scrollLeft = startScroll - (e.pageX-startX);
+      });
     })();
   </script>
 </body>
