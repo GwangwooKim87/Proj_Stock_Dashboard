@@ -190,6 +190,7 @@
       <div id="rangeBtns">
         <button class="range-btn active" data-range="7d">7일</button>
         <button class="range-btn" data-range="30d">30일</button>
+        <button class="range-btn" data-range="monthly">월간</button>
         <button class="range-btn" data-range="all">전체</button>
       </div>
     </div>
@@ -309,38 +310,18 @@
     })();
 
     // ===== 총자산 시계열 추이선 (Area chart) =====
-    const RANGE_DEFAULTS = {'7d':'7일','30d':'30일','all':'전체'};
-    // 월간 추이: 월말(해당 월의 마지막 스냅샷) 값을 선으로 연결. 월수익/누적수익(시리즈 첫 값 대비)도 함께 계산.
-    function computeMonthlySeries(dates, values){
-      const lastIdxByMonth = {};
-      dates.forEach((d,i)=>{ lastIdxByMonth[d.slice(0,7)] = i; }); // 같은 월이면 마지막 인덱스로 덮어씀
-      const idxs = Object.values(lastIdxByMonth).sort((a,b)=>a-b);
-      const firstVal = values[0];
-      const points = idxs.map((idx,k)=>{
-        const value = values[idx];
-        const prevVal = k>0 ? values[idxs[k-1]] : firstVal;
-        const monthlyChange = value - prevVal;
-        const monthlyPct = prevVal ? monthlyChange/prevVal*100 : null;
-        const cumChange = value - firstVal;
-        const cumPct = firstVal ? cumChange/firstVal*100 : null;
-        return { idx, date:dates[idx], value, monthlyChange, monthlyPct, cumChange, cumPct };
-      });
-      const seriesData = new Array(dates.length).fill(null);
-      points.forEach(p=> seriesData[p.idx]=p.value);
-      const byIdx = {};
-      points.forEach(p=> byIdx[p.idx]=p);
-      return { seriesData, byIdx };
-    }
-
-    const trendOption = (data) => {
-      // M4: 동적 Y축 도메인 - 0 기준 고정 대신 데이터 범위 ±20%(평탄할 경우 ±10%)로 변동폭을 부각
-      const vals = data.total_values || [];
+    const RANGE_DEFAULTS = {'7d':'7일','30d':'30일','monthly':'월간','all':'전체'};
+    // 동적 Y축 도메인 계산 - 0 기준 고정 대신 데이터 범위 ±20%(평탄할 경우 ±10%)로 변동폭을 부각 (일별/월별 공용)
+    function calcYDomain(vals){
       const vmin = Math.min(...vals), vmax = Math.max(...vals);
       const range = vmax - vmin;
       const pad = range > 0 ? range * 0.2 : vmax * 0.1;
-      const yMin = Math.max(0, Math.floor(vmin - pad));
-      const yMax = Math.ceil(vmax + pad);
-      const monthly = computeMonthlySeries(data.dates, vals);
+      return { yMin: Math.max(0, Math.floor(vmin - pad)), yMax: Math.ceil(vmax + pad) };
+    }
+    const yAxisFmt = v => v>=1e8 ? (v/1e8).toFixed(1)+'억' : v>=1e4 ? (v/1e4).toFixed(1)+'만' : fmt(v);
+
+    const trendOption = (data) => {
+      const { yMin, yMax } = calcYDomain(data.total_values || []);
       return {
       backgroundColor: 'transparent',
       tooltip: {
@@ -360,24 +341,12 @@
           const dailyCls = dailyAmt==null ? '#9aa0aa' : (dailyAmt>0?'#ff5c5c':dailyAmt<0?'#58a6ff':'#9aa0aa');
           const dailyTxt = dailyAmt==null ? '데이터 없음 (첫 스냅샷)'
             : (dailyAmt>0?'▲ ':dailyAmt<0?'▼ ':'')+fmt(Math.abs(dailyAmt),'원')+' ('+fmtPctSigned(dailyPct)+')';
-          let html = '<b>'+d+'</b><br/>총평가액: '+fmt(v,'원')+
+          return '<b>'+d+'</b><br/>총평가액: '+fmt(v,'원')+
                  '<br/>일 수익: <span style="color:'+dailyCls+'">'+dailyTxt+'</span>'+
                  '<br/>누적 수익률: '+(r!=null? fmtPctSigned(r) : '-');
-          const mp = monthly.byIdx[i];
-          if(mp){
-            const mCls = mp.monthlyChange>0?'#ff5c5c':mp.monthlyChange<0?'#58a6ff':'#9aa0aa';
-            const cCls = mp.cumChange>0?'#ff5c5c':mp.cumChange<0?'#58a6ff':'#9aa0aa';
-            html += '<hr style="border-color:#2a2e38;margin:6px 0;">'+
-              '<b>['+mp.date.slice(0,7)+' 월말]</b>'+
-              '<br/>월수익: <span style="color:'+mCls+'">'+fmt(mp.monthlyChange,'원')+' ('+fmtPctSigned(mp.monthlyPct)+')</span>'+
-              '<br/>누적수익: <span style="color:'+cCls+'">'+fmt(mp.cumChange,'원')+' ('+fmtPctSigned(mp.cumPct)+')</span>';
-          }
-          return html;
         }
       },
-      legend:{ show:true, top:0, right:'5%', itemWidth:14, itemHeight:8,
-        textStyle:{ color:'#9aa0aa', fontSize:11 }, data:['총평가액','월간 추이'] },
-      grid:{ left:'12%', right:'5%', top:'14%', bottom:'12%' },
+      grid:{ left:'12%', right:'5%', top:'12%', bottom:'12%' },
       xAxis:{
         type:'category', boundaryGap:false, data:data.dates,
         axisLine:{ lineStyle:{ color:'#2a2e38' } },
@@ -385,8 +354,7 @@
       },
       yAxis:{
         type:'value', min:yMin, max:yMax,
-        axisLabel:{ color:'#9aa0aa', fontSize:11,
-          formatter: v => v>=1e8 ? (v/1e8).toFixed(1)+'억' : v>=1e4 ? (v/1e4).toFixed(1)+'만' : fmt(v) },
+        axisLabel:{ color:'#9aa0aa', fontSize:11, formatter:yAxisFmt },
         splitLine:{ lineStyle:{ color:'#22262f' } }
       },
       series:[{
@@ -396,11 +364,65 @@
           { offset:0, color:'rgba(74,222,128,0.35)' }, { offset:1, color:'rgba(74,222,128,0)' }
         ])},
         data:data.total_values
-      },{
-        name:'월간 추이', type:'line', connectNulls:true, showSymbol:true, symbol:'circle', symbolSize:7, z:3,
-        lineStyle:{ width:2, type:'dashed', color:'#58a6ff' }, itemStyle:{ color:'#58a6ff' },
-        data: monthly.seriesData
       }]
+      };
+    };
+
+    // 월간 필터: 전체 데이터를 월 단위(월말 스냅샷 기준)로 집계 → 월수익(전월 대비)/누적수익(시리즈 첫 값 대비)
+    function computeMonthlyPoints(dates, values){
+      const lastIdxByMonth = {};
+      dates.forEach((d,i)=>{ lastIdxByMonth[d.slice(0,7)] = i; }); // 같은 월이면 마지막 인덱스로 덮어씀
+      const idxs = Object.values(lastIdxByMonth).sort((a,b)=>a-b);
+      const firstVal = values[idxs[0]];
+      return idxs.map((idx,k)=>{
+        const value = values[idx];
+        const prevVal = k>0 ? values[idxs[k-1]] : value;
+        const monthlyChange = value - prevVal;
+        const monthlyPct = prevVal ? monthlyChange/prevVal*100 : null;
+        const cumChange = value - firstVal;
+        const cumPct = firstVal ? cumChange/firstVal*100 : null;
+        return { date:dates[idx], value, monthlyChange, monthlyPct, cumChange, cumPct };
+      });
+    }
+    const monthlyTrendOption = (points) => {
+      const values = points.map(p=>p.value);
+      const { yMin, yMax } = calcYDomain(values);
+      return {
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor:'#1a1d24', borderColor:'#2a2e38', borderWidth:1,
+          textStyle:{ color:'#e8e8e8', fontSize:12 },
+          formatter: function(ps){
+            const i = ps && ps[0] ? ps[0].dataIndex : -1;
+            const p = points[i];
+            if(!p) return '';
+            const mCls = p.monthlyChange>0?'#ff5c5c':p.monthlyChange<0?'#58a6ff':'#9aa0aa';
+            const cCls = p.cumChange>0?'#ff5c5c':p.cumChange<0?'#58a6ff':'#9aa0aa';
+            return '<b>'+p.date.slice(0,7)+' 월말</b><br/>총평가금액: '+fmt(p.value,'원')+
+              '<br/>월수익: <span style="color:'+mCls+'">'+fmt(p.monthlyChange,'원')+' ('+fmtPctSigned(p.monthlyPct)+')</span>'+
+              '<br/>누적수익: <span style="color:'+cCls+'">'+fmt(p.cumChange,'원')+' ('+fmtPctSigned(p.cumPct)+')</span>';
+          }
+        },
+        grid:{ left:'12%', right:'5%', top:'12%', bottom:'12%' },
+        xAxis:{
+          type:'category', boundaryGap:false, data:points.map(p=>p.date.slice(0,7)),
+          axisLine:{ lineStyle:{ color:'#2a2e38' } },
+          axisLabel:{ color:'#9aa0aa', fontSize:11 }
+        },
+        yAxis:{
+          type:'value', min:yMin, max:yMax,
+          axisLabel:{ color:'#9aa0aa', fontSize:11, formatter:yAxisFmt },
+          splitLine:{ lineStyle:{ color:'#22262f' } }
+        },
+        series:[{
+          name:'월간 총평가금액', type:'line', smooth:true, showSymbol:true, symbol:'circle', symbolSize:7,
+          lineStyle:{ width:2, color:'#4ade80' }, itemStyle:{ color:'#4ade80' },
+          areaStyle:{ color: new echarts.graphic.LinearGradient(0,0,0,1, [
+            { offset:0, color:'rgba(74,222,128,0.35)' }, { offset:1, color:'rgba(74,222,128,0)' }
+          ])},
+          data:values
+        }]
       };
     };
 
@@ -410,24 +432,29 @@
         .forEach(b=>b.classList.toggle('active', b.dataset.range===range));
       const el = $('trendChart');
       try{
-        const res = await fetch('/api/portfolio/history?range='+range);
+        // 월간 필터는 전체 데이터를 받아 클라이언트에서 월 단위로 집계
+        const res = await fetch('/api/portfolio/history?range='+(range==='monthly'?'all':range));
         const data = await res.json();
-        const n = data && Array.isArray(data.dates) ? data.dates.length : 0;
+        const isMonthly = range==='monthly';
+        const monthlyPoints = isMonthly ? computeMonthlyPoints(data.dates||[], data.total_values||[]) : null;
+        const n = isMonthly ? monthlyPoints.length : (data && Array.isArray(data.dates) ? data.dates.length : 0);
         // M4: 데이터 0~1개일 때 빈 차트 대신 안내/단일값 카드로 대체
         if(n < 2){
           if(trendChart){ trendChart.dispose(); trendChart=null; }
           if(n === 0){
             el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#9aa0aa;font-size:13px;">아직 수집된 데이터가 없습니다 · 일일 스냅샷 수집 후 추이가 표시됩니다</div>';
           } else {
+            const v0 = isMonthly ? monthlyPoints[0].value : data.total_values[0];
+            const d0 = isMonthly ? monthlyPoints[0].date.slice(0,7) : data.dates[0];
             el.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">'+
-              '<div class="muted">데이터 수집 중 · 1일치 (2일 이상부터 추이선 표시)</div>'+
-              '<div style="font-size:26px;font-weight:700;">'+fmt(data.total_values[0],'원')+'</div>'+
-              '<div class="muted">'+data.dates[0]+'</div></div>';
+              '<div class="muted">데이터 수집 중 · 1'+(isMonthly?'개월':'일')+'치 (2'+(isMonthly?'개월':'일')+' 이상부터 추이선 표시)</div>'+
+              '<div style="font-size:26px;font-weight:700;">'+fmt(v0,'원')+'</div>'+
+              '<div class="muted">'+d0+'</div></div>';
           }
         } else {
           if(el.innerHTML && !trendChart) el.innerHTML = '';
           if(!trendChart && window.echarts) trendChart = echarts.init(el);
-          if(trendChart) trendChart.setOption(trendOption(data), true);
+          if(trendChart) trendChart.setOption(isMonthly ? monthlyTrendOption(monthlyPoints) : trendOption(data), true);
         }
       }catch(e){ /* 차트 로드 실패는 전체 대시보드에 영향 없도록 조용히 */ }
     }
