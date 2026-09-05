@@ -152,9 +152,13 @@
     <div id="trendChart" style="height:320px;"></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:16px 0;">
-    <div class="card"><b>종목별 평가금액 비중</b><div id="donutItem" style="height:300px;"></div></div>
-    <div class="card"><b>원화 vs 외화 비중</b><div id="donutCcy" style="height:300px;display:flex;flex-direction:column;justify-content:center;"></div></div>
+  <div class="card" style="margin:16px 0;">
+    <b>종목별 평가금액 비중</b>
+    <div id="donutItem" style="height:340px;"></div>
+  </div>
+  <div class="card" style="margin:16px 0;">
+    <b>원화 vs 외화 비중</b>
+    <div id="donutCcy" style="min-height:70px;display:flex;flex-direction:column;justify-content:center;margin-top:10px;"></div>
   </div>
   <div class="status-banner" id="status"></div>
 
@@ -367,7 +371,9 @@
             const FX = FX_RATE;
 
             // 도넛 1: 종목별 평가금액 비중 (USD 종목은 FX 환산 후 비중)
-            // M4: 라벨 제거→호버 툴팁, 상위5+기타 집계, 우측 세로 범례(색점+종목명+비중%)
+            // 카드 전체 폭 사용: 좌측 도넛(겹침 없는 여백 확보) + 우측 세로 범례(색점+종목명+비중%)
+            // 세분화: 고정 top-N 대신 비중 2% 미만만 "기타"로 묶어 소수 종목에 쏠리지 않게 처리
+            // 호버 시 해당 종목만 강조(emphasis.focus) + 나머지 흐림(blur) 처리
             if (FX_RATE && window.echarts && $('donutItem')) {
               const byName={};
               items.forEach(h=>{
@@ -376,9 +382,11 @@
                 byName[k]=(byName[k]||0)+valKrw;
               });
               const itemSort=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
-              const top5=itemSort.slice(0,5);
-              const restSum=itemSort.slice(5).reduce((s,[,v])=>s+v,0);
-              const pieData=top5.map(([n,v])=>({name:n,value:Math.round(v)}));
+              const grandTotal=itemSort.reduce((s,[,v])=>s+v,0);
+              const threshold=grandTotal*0.02;
+              const shown=itemSort.filter(([,v])=>v>=threshold);
+              const restSum=itemSort.filter(([,v])=>v<threshold).reduce((s,[,v])=>s+v,0);
+              const pieData=shown.map(([n,v])=>({name:n,value:Math.round(v)}));
               if(restSum>0) pieData.push({name:'기타',value:Math.round(restSum)});
               const totalVal=pieData.reduce((s,d)=>s+d.value,0);
               const pctMap={};
@@ -386,11 +394,12 @@
               const itemDonut=echarts.init($('donutItem'));
               itemDonut.setOption({
                 tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
-                legend:{ orient:'vertical', right:6, top:'middle', itemWidth:10, itemHeight:10, itemGap:10,
+                legend:{ orient:'vertical', right:16, top:'middle', itemWidth:10, itemHeight:10, itemGap:9,
                   textStyle:{ color:'#9aa0aa', fontSize:11 },
                   formatter: name => name+'  '+pctMap[name].toFixed(1)+'%' },
-                series:[{type:'pie',radius:['42%','72%'],center:['36%','50%'],
+                series:[{type:'pie',radius:['46%','80%'],center:['24%','50%'],
                   label:{show:false},labelLine:{show:false},
+                  emphasis:{ focus:'self', label:{show:false} }, blurScope:'coordinateSystem',
                   data:pieData}]});
               window._d1=itemDonut;
             }
