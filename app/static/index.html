@@ -13,12 +13,17 @@
   .muted{ color:#9aa0aa; font-size:13px;}
   .card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:14px; }
   .card b{ font-size:15px; display:block; margin-bottom:4px;}
-  .sum{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:16px 0;}
-  .sum .card b{ font-size:20px; }
+  .kpi-row{ display:grid; gap:12px; margin:16px 0 0; }
+  .kpi-row.top{ grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .kpi-row.bottom{ grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-top:12px; }
   .kpi-card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:12px; padding:16px 18px; }
+  .kpi-row.top .kpi-card .kpi-value{ font-size:24px; }
   .kpi-card .kpi-label{ display:block; color:#9aa0aa; font-size:12px; margin-bottom:6px; }
-  .kpi-card .kpi-value{ font-size:22px; font-weight:700; color:#e8e8e8; font-variant-numeric:tabular-nums; }
+  .kpi-card .kpi-value{ font-size:20px; font-weight:700; color:#e8e8e8; font-variant-numeric:tabular-nums; }
   .kpi-card .kpi-sub{ margin-top:6px; font-size:12px; color:#9aa0aa; font-variant-numeric:tabular-nums; }
+  .kpi-card .kpi-value.red, .kpi-card .kpi-sub.red{ color:#ff5c5c; }
+  .kpi-card .kpi-value.green, .kpi-card .kpi-sub.green{ color:#4ade80; }
+  .kpi-card .kpi-value.blue, .kpi-card .kpi-sub.blue{ color:#58a6ff; }
   .pos{ width:100%; font-size:13px; border-collapse:collapse;}
   .pos th,.pos td{ text-align:left; padding:8px 6px; border-bottom:1px solid #22262f;}
   .pos th{ color:#9aa0aa; font-weight:600;}
@@ -132,7 +137,8 @@
     </div>
   </header>
 
-  <div class="sum" id="summary"></div>
+  <div class="kpi-row top" id="summaryTop"></div>
+  <div class="kpi-row bottom" id="summaryBottom"></div>
 
   <div class="card" style="margin:16px 0;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -311,24 +317,26 @@
         const prevTotal = hist.total_values[hist.total_values.length-1];
         if(prevTotal){ diffAmt = totalAll - prevTotal; diffPct = diffAmt/prevTotal*100; }
       }
-      // 국내 주식 관례: 상승 초록, 하락 파랑
+      // 국내 주식 관례: 상승(+) 빨강, 하락(-) 파랑 — 금액이 아닌 변동률/변동폭 글자에만 적용
       const diffArrow = diffAmt==null ? '' : (diffAmt>0?'▲ ':diffAmt<0?'▼ ':'');
-      const diffCls = diffAmt==null ? '' : (diffAmt>0?'green':diffAmt<0?'blue':'');
+      const diffCls = diffAmt==null ? '' : (diffAmt>0?'red':diffAmt<0?'blue':'');
       const diffTxt = diffAmt==null ? '전일 대비 데이터 없음'
         : diffArrow+fmt(Math.abs(diffAmt),'원')+' ('+(diffPct>=0?'+':'')+diffPct.toFixed(2)+'%)';
-      const pnlCls = pnlKrw>0?'green':(pnlKrw<0?'red':'');
+      const pnlRateCls = pnlRatePct==null ? '' : (pnlRatePct>0?'red':pnlRatePct<0?'blue':'');
 
-      $('summary').innerHTML=
+      $('summaryTop').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">총 평가자산</span><div class="kpi-value">'+fmt(totalAll,'원')+'</div>'+
           '<div class="kpi-sub '+diffCls+'">'+diffTxt+'</div></div>'+
+        '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value">'+fmt(pnlKrw,'원')+'</div>'+
+          '<div class="kpi-sub '+pnlRateCls+'">'+(pnlRatePct==null?'-':(pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'%')+'</div></div>';
+
+      $('summaryBottom').innerHTML=
         '<div class="kpi-card"><span class="kpi-label">키움 ISA</span><div class="kpi-value">'+fmt(kiwoomKrw,'원')+'</div>'+
           '<div class="kpi-sub">'+kiwoomCount+'종목 보유</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">토스 국내</span><div class="kpi-value">'+fmt(tossDomKrw,'원')+'</div>'+
           '<div class="kpi-sub">'+tossDomCount+'종목 보유</div></div>'+
         '<div class="kpi-card"><span class="kpi-label">토스 해외</span><div class="kpi-value">'+fmt(tossForeignUsd,'$',true)+'</div>'+
-          '<div class="kpi-sub">≈ '+fmt(tossForeignKrwEq,'원')+' · '+tossForeignCount+'종목</div></div>'+
-        '<div class="kpi-card"><span class="kpi-label">총 누적 손익</span><div class="kpi-value '+pnlCls+'">'+fmt(pnlKrw,'원')+'</div>'+
-          '<div class="kpi-sub '+pnlCls+'">'+(pnlRatePct==null?'-':(pnlRatePct>=0?'+':'')+pnlRatePct.toFixed(2)+'%')+'</div></div>';
+          '<div class="kpi-sub">≈ '+fmt(tossForeignKrwEq,'원')+' · '+tossForeignCount+'종목</div></div>';
 
       // FX: USD→KRW 실시간 환율 ( /api/fx/rate : 백엔드 TTL 캐시·폴백 포함)
             const FX = FX_RATE;
