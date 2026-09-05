@@ -27,6 +27,22 @@
   .range-btn:hover{ color:#e8e8e8;}
   .range-btn.active{ background:#1f6feb33; border-color:#1f6feb; color:#7db4ff;}
 
+  /* ===== M2 헤더 및 시스템 상태 ===== */
+  .topbar{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin:8px 0 4px; }
+  .topbar .brand-row{ display:flex; align-items:center; gap:8px; }
+  .topbar h1{ margin:0; }
+  .topbar-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .fx-badge{ font-size:12px; color:#9aa0aa; background:#1a1d24; border:1px solid #2a2e38; border-radius:20px; padding:6px 12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .fx-badge b{ color:#e8e8e8; font-weight:600; }
+  .live-badge{ display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa0aa; background:#1a1d24; border:1px solid #2a2e38; border-radius:20px; padding:6px 12px; white-space:nowrap; }
+  .live-badge .dot{ width:7px; height:7px; border-radius:50%; background:#4ade80; animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(74,222,128,.5);} 70%{ box-shadow:0 0 0 6px rgba(74,222,128,0);} 100%{ box-shadow:0 0 0 0 rgba(74,222,128,0);} }
+  .icon-btn{ width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:#1a1d24; border:1px solid #2a2e38; border-radius:8px; color:#9aa0aa; cursor:pointer; font-size:16px; line-height:1; transition:color .15s, border-color .15s; }
+  .icon-btn:hover{ color:#e8e8e8; border-color:#4ade80; }
+  .icon-btn.spinning{ animation:spin .8s linear infinite; }
+  .status-banner{ display:none; }
+  .status-banner.show{ display:block; background:#2d1214; border:1px solid #f85149; color:#ff8383; padding:10px 14px; border-radius:8px; margin:12px 0; font-size:13px; }
+
   /* ===== M1-1 로그인 레이아웃 (대시보드 그린 테마) ===== */
   @keyframes loginIn{ from{ opacity:0; transform:translateY(10px) scale(.99); } to{ opacity:1; transform:translateY(0) scale(1); } }
   @keyframes spin{ to{ transform:rotate(360deg); } }
@@ -98,8 +114,21 @@
   </div>
 
   <div id="appMain" style="display:none;">
-  <h1>Stock Dashboard</h1>
-  <div class="muted" id="meta">loading health...</div>
+  <header class="topbar">
+    <div class="brand-row">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 17L9 11L13 15L21 6" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M15 6H21V12" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Stock Dashboard</h1>
+    </div>
+    <div class="topbar-right">
+      <div class="fx-badge" id="fxBadge">환율 조회 중...</div>
+      <div class="live-badge"><span class="dot"></span><span>Live · <span id="lastUpdated">--:--</span></span></div>
+      <button class="icon-btn" id="refreshBtn" title="새로고침">⟳</button>
+      <button class="icon-btn" id="logoutBtn" title="로그아웃">⏻</button>
+    </div>
+  </header>
 
   <div class="card" style="margin:16px 0;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -119,7 +148,7 @@
     <div class="card"><b>원화 vs 외화 비중</b><div id="donutCcy" style="height:300px;"></div></div>
   </div>
   <div class="cards" id="accts"></div>
-  <div class="card" id="status">Loading...</div>
+  <div class="status-banner" id="status"></div>
 
   <table class="pos" id="pos">
     <thead><tr><th>브로커</th><th>종목</th><th>수량</th><th>현재가</th><th>평단가</th><th>통화</th><th>평가손익</th><th>수익률</th></tr></thead>
@@ -244,12 +273,10 @@
     function loadDashboardData(){
       loadTrend('7d');
 
-    fetch('/health').then(r=>r.json()).then(d=>{$('meta').textContent='db: '+d.db}).catch(()=>{});
-
     fetch('/api/accounts').then(r=>r.json()).then(d=>{
       const el=$('accts');
       el.innerHTML=(d.accounts||[]).map(a=>'<div class="card"><b>'+a.label+'</b><div class="st"><span class="muted">계좌번호: </span>'+a.account_no+'</div><div class="tag">통화 '+a.currency_base+' · '+a.broker+'</div></div>').join('') || '<div class="card muted">계좌 없음</div>';
-    }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
+    }).catch(e=>{ $('status').textContent='계좌 정보 로드 실패: '+e; $('status').classList.add('show'); });
 
     Promise.all([
       fetch('/api/portfolio').then(r=>r.json()),
@@ -307,9 +334,25 @@
         '<td class="num">'+fmt(h.avg_price)+'</td><td>'+h.currency+'</td>'+
         '<td class="num '+pnlCls+'">'+fmt(h.p_pnl)+'</td>'+
         '<td class="num '+rateCls+'">'+(h.p_pnl_rate!=null?h.p_pnl_rate.toFixed(2)+'%':'-')+'</td></tr>';}).join('');
-      $('status').innerHTML='<b>Status:</b> healthy · 종목 '+items.length+' · 저장 '+d.saved;
-    }).catch(e=>{$('status').innerHTML='<b>Status:</b> error: '+e});
+      $('status').classList.remove('show');
+      $('fxBadge').innerHTML = FX_RATE ? '1 USD = <b>'+fmt(Math.round(FX_RATE))+'</b> KRW' : 'FX 조회 실패';
+      $('lastUpdated').textContent = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    }).catch(e=>{ $('status').textContent='포트폴리오 로드 실패: '+e; $('status').classList.add('show'); });
     } // end loadDashboardData()
+
+    // ===== M2 헤더 버튼: 새로고침 / 로그아웃 =====
+    (function(){
+      const refreshBtn=$('refreshBtn'), logoutBtn=$('logoutBtn');
+      if(refreshBtn) refreshBtn.addEventListener('click', ()=>{
+        refreshBtn.classList.add('spinning');
+        loadDashboardData();
+        setTimeout(()=>refreshBtn.classList.remove('spinning'), 600);
+      });
+      if(logoutBtn) logoutBtn.addEventListener('click', async ()=>{
+        try{ await fetch('/api/logout',{method:'POST'}); }catch(e){}
+        showLogin();
+      });
+    })();
   </script>
 </body>
 </html>
