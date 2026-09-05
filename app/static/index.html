@@ -36,6 +36,15 @@
   .kpi-card .kpi-value.green, .kpi-card .kpi-sub.green{ color:#4ade80; }
   .kpi-card .kpi-value.blue, .kpi-card .kpi-sub.blue{ color:#58a6ff; }
   .pos-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  #posFilterBtns{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin:16px 0 8px; }
+  .filter-btns-group{ display:flex; gap:8px; flex-wrap:wrap; }
+  .filter-summary{ display:flex; gap:16px; align-items:center; font-size:12px; color:#9aa0aa; white-space:nowrap; }
+  .filter-summary b{ color:#e8e8e8; font-weight:600; font-variant-numeric:tabular-nums; }
+  @media (max-width:640px){
+    #posFilterBtns{ flex-direction:column; align-items:stretch; }
+    .filter-summary{ width:100%; justify-content:space-between; white-space:normal;
+      background:#1a1d24; border:1px solid #2a2e38; border-radius:10px; padding:10px 14px; }
+  }
   .pos-cards{ display:none; }
   .holding-card{ background:#1a1d24; border:1px solid #2a2e38; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
   .holding-card .hc-name{ font-size:14px; font-weight:600; color:#e8e8e8; margin-bottom:8px; }
@@ -195,11 +204,14 @@
   </div>
   <div class="status-banner" id="status"></div>
 
-  <div id="posFilterBtns" style="margin:16px 0 8px;">
-    <button class="range-btn active" data-filter="all">전체</button>
-    <button class="range-btn" data-filter="kiwoom">키움</button>
-    <button class="range-btn" data-filter="toss-dom">토스 국내</button>
-    <button class="range-btn" data-filter="toss-foreign">토스 해외</button>
+  <div id="posFilterBtns">
+    <div class="filter-btns-group">
+      <button class="range-btn active" data-filter="all">전체</button>
+      <button class="range-btn" data-filter="kiwoom">키움</button>
+      <button class="range-btn" data-filter="toss-dom">토스 국내</button>
+      <button class="range-btn" data-filter="toss-foreign">토스 해외</button>
+    </div>
+    <div class="filter-summary" id="filterSummary"></div>
   </div>
   <div class="pos-wrap">
     <table class="pos" id="pos">
@@ -387,6 +399,20 @@
     function renderPosTable(){
       const items = filterItemsByPosFilter(window._posItems || []);
       const qmap = window._quotesMap || {};
+
+      // 필터 행 요약: 현재 필터 기준 평가금액/총손익 (혼합 통화는 KRW 환산 합산)
+      const FX = window._FX_RATE || 0;
+      let sumEvalKrw=0, sumPnlKrw=0;
+      items.forEach(h=>{
+        const mv=h.qty*h.cur_price;
+        sumEvalKrw += h.currency==='USD' ? mv*FX : mv;
+        sumPnlKrw += h.currency==='USD' ? (h.p_pnl||0)*FX : (h.p_pnl||0);
+      });
+      const sumPnlCls = sumPnlKrw>0?'green':(sumPnlKrw<0?'red':'');
+      $('filterSummary').innerHTML = items.length
+        ? '<span>평가금액 <b>'+fmt(sumEvalKrw,'원')+'</b></span><span>총손익 <b class="'+sumPnlCls+'">'+fmt(sumPnlKrw,'원')+'</b></span>'
+        : '';
+
       $('posbody').innerHTML=items.map(h=>{
         const pnlCls = h.p_pnl > 0 ? 'green' : (h.p_pnl < 0 ? 'red' : '');
         const rateCls = h.p_pnl_rate > 0 ? 'green' : (h.p_pnl_rate < 0 ? 'red' : '');
