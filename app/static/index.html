@@ -27,25 +27,43 @@
   .range-btn:hover{ color:#e8e8e8;}
   .range-btn.active{ background:#1f6feb33; border-color:#1f6feb; color:#7db4ff;}
 
-  /* ===== M1-1 로그인 레이아웃 (GitHub Dark) ===== */
-  .login-overlay{ position:fixed; inset:0; background:#0b0e14; display:flex; align-items:center; justify-content:center; z-index:100; }
-  .login-card{ background:#161b22; border:1px solid #30363d; border-radius:16px; padding:52px 48px; width:560px; max-width:94vw; box-shadow:0 16px 48px rgba(0,0,0,.5); }
-  .login-card .brand{ font-size:26px; font-weight:700; color:#e6edf3; margin:0 0 6px; letter-spacing:-.01em; }
+  /* ===== M1-1 로그인 레이아웃 (대시보드 그린 테마) ===== */
+  @keyframes loginIn{ from{ opacity:0; transform:translateY(10px) scale(.99); } to{ opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .login-overlay{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:100;
+    background:
+      radial-gradient(900px circle at 18% -8%, rgba(74,222,128,.14), transparent 60%),
+      radial-gradient(700px circle at 85% 105%, rgba(74,222,128,.08), transparent 55%),
+      #0b0e14;
+  }
+  .login-card{
+    position:relative; overflow:hidden; background:#161b22; border:1px solid rgba(74,222,128,.18); border-radius:16px;
+    padding:52px 48px; width:560px; max-width:94vw;
+    box-shadow:0 20px 60px rgba(0,0,0,.55), 0 0 40px -14px rgba(74,222,128,.35);
+    animation:loginIn .4s ease-out;
+  }
+  .login-card::before{ content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg, transparent, #4ade80, transparent); }
+  .login-card .brand-row{ display:flex; align-items:center; gap:10px; margin:0 0 6px; }
+  .login-card .brand-row svg{ flex:none; filter:drop-shadow(0 0 6px rgba(74,222,128,.5)); }
+  .login-card .brand{ font-size:26px; font-weight:700; color:#e6edf3; margin:0; letter-spacing:-.01em; }
   .login-card .sub{ color:#8b949e; font-size:15px; margin:0 0 32px; }
   .login-field{ margin-bottom:20px; }
   .login-field label{ display:block; font-size:15px; color:#e6edf3; margin-bottom:8px; }
   .login-field input{ width:100%; padding:13px 15px; background:#0d1117; border:1px solid #30363d; border-radius:8px; color:#e6edf3; font-size:16px; box-sizing:border-box; transition:border-color .15s, box-shadow .15s; }
   .login-field input::placeholder{ color:#6e7681; }
-  .login-field input:focus{ outline:none; border-color:#388bfd; box-shadow:0 0 0 3px rgba(56,139,253,.25); }
+  .login-field input:focus{ outline:none; border-color:#4ade80; box-shadow:0 0 0 3px rgba(74,222,128,.25); }
   .login-field.err input{ border-color:#f85149; }
   .login-field.err input:focus{ box-shadow:0 0 0 3px rgba(248,81,73,.2); }
   .login-field .err-msg{ color:#f85149; font-size:12px; margin-top:5px; display:none; }
   .login-field.err .err-msg{ display:block; }
   .login-remember{ display:flex; align-items:center; gap:7px; margin:2px 0 18px; font-size:13px; color:#c9d1d9; cursor:pointer; user-select:none; }
-  .login-remember input{ accent-color:#388bfd; width:14px; height:14px; cursor:pointer; }
-  .login-btn{ width:100%; padding:10px; background:#238636; color:#fff; border:1px solid rgba(240,246,252,.1); border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; transition:background .15s; }
-  .login-btn:hover:not(:disabled){ background:#2ea043; }
-  .login-btn:disabled{ opacity:.55; cursor:default; }
+  .login-remember input{ accent-color:#4ade80; width:14px; height:14px; cursor:pointer; }
+  .login-btn{ position:relative; width:100%; padding:11px; background:linear-gradient(180deg,#22c55e,#15803d); color:#fff; border:1px solid rgba(74,222,128,.3); border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:filter .15s, box-shadow .15s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .login-btn:hover:not(:disabled){ filter:brightness(1.08); box-shadow:0 0 0 3px rgba(74,222,128,.15); }
+  .login-btn:disabled{ opacity:.7; cursor:default; }
+  .login-btn .spinner{ width:14px; height:14px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
   .login-meta{ margin-top:16px; font-size:12px; color:#8b949e; text-align:center; }
 </style>
 </head>
@@ -53,7 +71,13 @@
   <!-- ===== M1-1 로그인 레이아웃 (미인증 진입 화면) ===== -->
   <div class="login-overlay" id="loginOverlay">
     <form class="login-card" id="loginForm" novalidate>
-      <p class="brand">Stock Dashboard</p>
+      <div class="brand-row">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 17L9 11L13 15L21 6" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 6H21V12" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="brand">Stock Dashboard</p>
+      </div>
       <p class="sub">로그인하여 자산 현황을 확인하세요</p>
       <div class="login-field" id="fId">
         <label for="loginId">아이디 또는 이메일</label>
@@ -68,7 +92,7 @@
       <label class="login-remember">
         <input type="checkbox" id="loginRemember"> 로그인 상태 유지
       </label>
-      <button class="login-btn" type="submit" id="loginBtn">로그인</button>
+      <button class="login-btn" type="submit" id="loginBtn"><span class="spinner" id="loginSpinner" hidden></span><span id="loginBtnText">로그인</span></button>
       <p class="login-meta" id="loginMeta">개인 자산 대시보드 · 접속 권한이 필요합니다</p>
     </form>
   </div>
@@ -119,7 +143,8 @@
       }catch(e){ showLogin(); }
     }
     async function doLogin(){
-      const btn=$('loginBtn'); btn.disabled=true;
+      const btn=$('loginBtn'), spin=$('loginSpinner'), btnText=$('loginBtnText');
+      btn.disabled=true; if(spin) spin.hidden=false; if(btnText) btnText.textContent='로그인 중...';
       try{
         const res = await fetch('/api/login',{
           method:'POST', headers:{'Content-Type':'application/json'},
@@ -131,7 +156,7 @@
         });
         if(!res.ok){ showServerError('아이디 또는 비밀번호가 올바르지 않습니다.'); return; }
         showDashboard();
-      }finally{ btn.disabled=false; }
+      }finally{ btn.disabled=false; if(spin) spin.hidden=true; if(btnText) btnText.textContent='로그인'; }
     }
     function showServerError(msg){
       // 에러 시 하단 일반 문구 + 입력 유지
