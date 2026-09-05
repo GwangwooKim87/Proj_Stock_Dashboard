@@ -391,16 +391,26 @@
               const totalVal=pieData.reduce((s,d)=>s+d.value,0);
               const pctMap={};
               pieData.forEach(d=>{ pctMap[d.name]= totalVal? (d.value/totalVal*100):0; });
+              const legendLabel = (name, on) => on ? '{bold|'+name+'}  {bold|'+pctMap[name].toFixed(1)+'%}' : name+'  '+pctMap[name].toFixed(1)+'%';
               const itemDonut=echarts.init($('donutItem'));
               itemDonut.setOption({
                 tooltip:{trigger:'item',formatter:p=>p.name+': '+fmt(p.value,'원')+' ('+p.percent+'%)'},
-                legend:{ orient:'vertical', right:16, top:'middle', itemWidth:10, itemHeight:10, itemGap:9,
-                  textStyle:{ color:'#9aa0aa', fontSize:11 },
-                  formatter: name => name+'  '+pctMap[name].toFixed(1)+'%' },
-                series:[{type:'pie',radius:['46%','80%'],center:['24%','50%'],
+                legend:{ orient:'vertical', right:16, top:'middle', itemWidth:12, itemHeight:12, itemGap:12,
+                  textStyle:{ color:'#9aa0aa', fontSize:14, rich:{ bold:{ color:'#e8e8e8', fontWeight:'bold', fontSize:14 } } },
+                  formatter: name => legendLabel(name, false) },
+                series:[{type:'pie',radius:['34%','58%'],center:['24%','50%'],
                   label:{show:false},labelLine:{show:false},
                   emphasis:{ focus:'self', label:{show:false} }, blurScope:'coordinateSystem',
                   data:pieData}]});
+              // 도넛 슬라이스 호버 시 오른쪽 범례 항목도 볼드 강조
+              itemDonut.on('mouseover', params=>{
+                if(params.componentType!=='series') return;
+                itemDonut.setOption({ legend:{ formatter: name => legendLabel(name, name===params.name) } });
+              });
+              itemDonut.on('mouseout', params=>{
+                if(params.componentType!=='series') return;
+                itemDonut.setOption({ legend:{ formatter: name => legendLabel(name, false) } });
+              });
               window._d1=itemDonut;
             }
 
